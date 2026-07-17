@@ -18,14 +18,9 @@ from google.oauth2.service_account import Credentials
 # ------------------------------------------------------------------
 st.set_page_config(page_title="Telegram Publisher", layout="centered")
 
-# CSS Injection for minimalist white design, large dropzone, and light blue button
+# CSS Injection for blue button and large dropzone
 st.markdown("""
     <style>
-    /* Force pure white background */
-    .stApp {
-        background-color: #FFFFFF !important;
-    }
-    
     /* Light blue submit button */
     [data-testid="baseButton-formSubmit"] {
         background-color: #ADD8E6 !important;
