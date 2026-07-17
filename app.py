@@ -7,6 +7,7 @@
 import html
 import json
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 import gspread
 import requests
@@ -22,7 +23,7 @@ st.set_page_config(page_title="Telegram Publisher", layout="centered")
 st.markdown("""
     <style>
     /* Light blue submit button */
-    [data-testid="baseButton-formSubmit"] {
+    [data-testid="baseButton-main"] {
         background-color: #ADD8E6 !important;
         color: #000000 !important;
         border: 1px solid #ADD8E6 !important;
@@ -30,7 +31,7 @@ st.markdown("""
         font-weight: 500 !important;
         transition: all 0.3s ease;
     }
-    [data-testid="baseButton-formSubmit"]:hover {
+    [data-testid="baseButton-main"]:hover {
         background-color: #87CEEB !important;
     }
     
@@ -44,6 +45,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 NOMBRE_PESTANA = "Usuarios" 
+ZONA_HORARIA = ZoneInfo("Europe/Madrid")
+
 
 # ------------------------------------------------------------------
 # GOOGLE SHEETS CONNECTION
@@ -101,25 +104,30 @@ def actualizar_uso(hoja, fila, col_map, nuevos_usos, fecha_hoy_str):
 # ------------------------------------------------------------------
 # TELEGRAM CAPTION CONSTRUCTION
 # ------------------------------------------------------------------
-def construir_caption(nombre, precio, link1, link2):
+def construir_caption(nombre, precio, links_data):
     texto = f"<b>{html.escape(nombre)}</b>\n\n"
     texto += f"<b>Price:</b> {html.escape(precio)}\n\n"
-    texto += f"<b>Link 1:</b> {html.escape(link1, quote=False)}\n"
-    if link2:
-        texto += f"<b>Link 2:</b> {html.escape(link2, quote=False)}\n"
+    
+    # Creates an HTML hyperlink for each link: <a href="URL">Platform</a>
+    for plataforma, url in links_data:
+        texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
+        
     return texto
 
 
 # ------------------------------------------------------------------
-# TELEGRAM SEND LOGIC
+# TELEGRAM SEND LOGIC (Updated with scheduling support)
 # ------------------------------------------------------------------
-def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
+def enviar_a_telegram(bot_token, chat_id, caption, imagenes, schedule_timestamp=None):
     try:
         if len(imagenes) == 1:
             archivo = imagenes[0]
             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
             files = {"photo": (archivo.name, archivo.getvalue(), archivo.type)}
             data = {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}
+            if schedule_timestamp:
+                data["schedule_date"] = schedule_timestamp
+                
             respuesta = requests.post(url, data=data, files=files, timeout=30)
 
         else:
@@ -136,6 +144,9 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
                 files[clave_archivo] = (archivo.name, archivo.getvalue(), archivo.type)
 
             data = {"chat_id": chat_id, "media": json.dumps(media)}
+            if schedule_timestamp:
+                data["schedule_date"] = schedule_timestamp
+                
             respuesta = requests.post(url, data=data, files=files, timeout=60)
 
         resultado = respuesta.json()
@@ -151,62 +162,113 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
 # UI & LOGIC
 # ------------------------------------------------------------------
 
-# 1. Pre-requisite authentication window
+# 1. Pre-requisite authentication window (with API optimization via Session State)
 clave = st.text_input("Access Key", type="password", placeholder="Enter your key and press Enter")
 
 if not clave:
-    st.stop()  # Stops the execution here until a key is typed
+    st.stop()  # Stops execution until a key is typed
 
-# --- REAL VALIDATION AT THE VERY BEGINNING ---
-with st.spinner("Verifying access key..."):
-    try:
-        hoja = obtener_hoja()
-        col_map = obtener_mapa_columnas(hoja)
-        fila, usuario = buscar_usuario(hoja, clave.strip())
-    except Exception as error:
-        st.error(f"Could not connect to Google Sheets: {error}")
-        st.stop()
+# Only run the Google Sheets query if the key is new or not yet verified
+if "current_key" not in st.session_state or st.session_state.current_key != clave:
+    with st.spinner("Verifying access key..."):
+        try:
+            hoja_auth = obtener_hoja()
+            col_map_auth = obtener_mapa_columnas(hoja_auth)
+            fila_auth, usuario_auth = buscar_usuario(hoja_auth, clave.strip())
+            
+            st.session_state.current_key = clave
+            if usuario_auth is None:
+                st.session_state.is_authenticated = False
+                st.session_state.user_data = None
+            else:
+                st.session_state.is_authenticated = True
+                st.session_state.user_data = usuario_auth
+                st.session_state.row_index = fila_auth
+                st.session_state.col_map = col_map_auth
+        except Exception as error:
+            st.error(f"Could not connect to Google Sheets: {error}")
+            st.stop()
 
-if usuario is None:
+if not st.session_state.get("is_authenticated"):
     st.error("Invalid access key. Please try again.")
-    st.stop() # If invalid, it dies here. Form is NEVER generated.
+    st.stop()
 
-# If valid, show success message and continue
+# Load cached user data
+usuario = st.session_state.user_data
+fila = st.session_state.row_index
+col_map = st.session_state.col_map
+
 st.success(f"Access granted. Welcome, {usuario.get('Nombre', 'User')}!")
 st.divider()
 
 
-# 2. Main Post Customization (Only visible if key is valid)
+# 2. Main Post Customization
 st.subheader("Post Customization")
 
-with st.form("form_post", clear_on_submit=False):
-    
-    # Images first
-    imagenes = st.file_uploader(
-        "Upload Images (Drag and drop supported)",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-    )
-    
-    # Article data directly below
-    nombre_articulo = st.text_input("Article Name")
-    precio = st.text_input("Price", placeholder="e.g. 19.99")
-    link1 = st.text_input("Link 1")
-    link2 = st.text_input("Link 2 (Optional)")
+imagenes = st.file_uploader(
+    "Upload Images (Drag and drop supported)",
+    type=["png", "jpg", "jpeg"],
+    accept_multiple_files=True,
+)
 
-    enviado = st.form_submit_button("Send to Telegram", use_container_width=True)
+nombre_articulo = st.text_input("Article Name")
+precio = st.text_input("Price", placeholder="e.g. 19.99")
 
-# 3. Submit Logic
+# Dynamic Link Section
+st.markdown("##### Links")
+PLATAFORMAS = ["Select an option...", "USFans", "Hipobuy", "ACBuy", "Litbuy", "Mulebuy", "Hoobuy", "Vigorbuy"]
+links_recopilados = []
+
+for i in range(1, 6):
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        plat_seleccionada = st.selectbox(f"Platform {i}", PLATAFORMAS, key=f"plat_{i}")
+    with col2:
+        # The text input is disabled if "Select an option..." is chosen
+        esta_bloqueado = (plat_seleccionada == "Select an option...")
+        link_url = st.text_input(f"URL {i}", disabled=esta_bloqueado, key=f"url_{i}")
+        
+    # If a valid platform is chosen and the user wrote a link, save it
+    if not esta_bloqueado and link_url.strip():
+        links_recopilados.append((plat_seleccionada, link_url.strip()))
+
+st.divider()
+
+# 3. Scheduling Section
+st.markdown("##### Schedule")
+programar = st.checkbox("Schedule post (Do not publish immediately)")
+
+schedule_timestamp = None
+if programar:
+    col_d, col_t = st.columns(2)
+    # Get Date and Time separately
+    fecha_prog = col_d.date_input("Date", min_value=date.today())
+    hora_prog = col_t.time_input("Time")
+    
+    # Combine and set timezone to Spain
+    dt_prog = datetime.combine(fecha_prog, hora_prog)
+    dt_aware = dt_prog.replace(tzinfo=ZONA_HORARIA)
+    schedule_timestamp = int(dt_aware.timestamp())
+
+# Submit Button
+enviado = st.button("Send to Telegram", use_container_width=True, type="primary")
+
+# 4. Submit Logic
 if enviado:
     missing_fields = []
     if not nombre_articulo: missing_fields.append("Article Name")
     if not precio: missing_fields.append("Price")
-    if not link1: missing_fields.append("Link 1")
+    if not links_recopilados: missing_fields.append("At least one link")
     if not imagenes: missing_fields.append("At least one image")
 
     if missing_fields:
         st.warning("Missing required fields: " + ", ".join(missing_fields))
         st.stop()
+        
+    if schedule_timestamp:
+        if schedule_timestamp < int(datetime.now(ZONA_HORARIA).timestamp()) + 10:
+            st.error("The scheduled time must be at least a few seconds in the future.")
+            st.stop()
 
     # --- Limit Verification ---
     hoy = date.today()
@@ -230,12 +292,12 @@ if enviado:
         st.stop()
 
     # --- Publishing ---
-    caption = construir_caption(nombre_articulo, precio, link1, link2)
+    caption = construir_caption(nombre_articulo, precio, links_recopilados)
 
     with st.spinner("Publishing to Telegram..."):
         bot_token = st.secrets["telegram"]["bot_token"]
         channel_id = st.secrets["telegram"]["channel_id"]
-        exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes)
+        exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes, schedule_timestamp)
 
     if not exito:
         st.error(f"Error sending to Telegram: {error_msg}")
@@ -243,7 +305,9 @@ if enviado:
 
     # --- Updating Counter in Google Sheets ---
     try:
-        actualizar_uso(hoja, fila, col_map, usos_efectivos + 1, hoy.strftime("%Y-%m-%d"))
+        # Re-fetch connection just for writing to avoid timeout issues
+        hoja_actualizar = obtener_hoja() 
+        actualizar_uso(hoja_actualizar, fila, col_map, usos_efectivos + 1, hoy.strftime("%Y-%m-%d"))
     except Exception as error:
         st.warning(
             f"Published to Telegram, but could not update the counter in Sheets: {error}"
@@ -251,4 +315,8 @@ if enviado:
         st.stop()
 
     restantes = limite_diario - (usos_efectivos + 1)
-    st.success(f"Successfully published! You have {restantes} posts left today.")
+    
+    if schedule_timestamp:
+        st.success(f"Successfully scheduled for {dt_aware.strftime('%Y-%m-%d %H:%M')}! You have {restantes} posts left today.")
+    else:
+        st.success(f"Successfully published! You have {restantes} posts left today.")
