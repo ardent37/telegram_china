@@ -12,7 +12,8 @@ from datetime import date, datetime
 import gspread
 import requests
 import streamlit as st
-from google.oauth2.service_account import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from google.oauth2.credentials import Credentials as UserCredentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
@@ -49,20 +50,25 @@ NOMBRE_PESTANA_PRESETS = "Productos_Guardados"
 # GOOGLE CLOUD (SHEETS & DRIVE) CONNECTION
 # ------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def obtener_servicios_gcp():
-    alcances = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
+def obtener_servicio_sheets():
+    alcances = ["https://www.googleapis.com/auth/spreadsheets"]
     credenciales_dict = dict(st.secrets["gcp_service_account"])
-    credenciales = Credentials.from_service_account_info(credenciales_dict, scopes=alcances)
-    
-    cliente_sheets = gspread.authorize(credenciales)
-    servicio_drive = build('drive', 'v3', credentials=credenciales)
-    return cliente_sheets, servicio_drive
+    credenciales = ServiceAccountCredentials.from_service_account_info(credenciales_dict, scopes=alcances)
+    return gspread.authorize(credenciales)
+
+@st.cache_resource(show_spinner=False)
+def obtener_servicio_drive():
+    credenciales = UserCredentials(
+        token=None,
+        refresh_token=st.secrets["gdrive"]["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=st.secrets["gdrive"]["client_id"],
+        client_secret=st.secrets["gdrive"]["client_secret"]
+    )
+    return build('drive', 'v3', credentials=credenciales)
 
 def obtener_hojas():
-    cliente_sheets, _ = obtener_servicios_gcp()
+    cliente_sheets = obtener_servicio_sheets()
     id_hoja = st.secrets["gsheets"]["sheet_id"]
     libro = cliente_sheets.open_by_key(id_hoja)
     return libro.worksheet(NOMBRE_PESTANA_USUARIOS), libro.worksheet(NOMBRE_PESTANA_PRESETS)
@@ -88,11 +94,10 @@ def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id
 
 # --- LOGICA DE GOOGLE DRIVE ---
 def obtener_o_crear_carpeta(servicio, nombre, id_padre):
-    # Comprobación de seguridad por si el ID de la carpeta principal está vacío
     if not id_padre:
-        raise Exception("El ID de la carpeta raíz (folder_id) está vacío en los Secrets.")
+        st.error("El ID de la carpeta raíz (folder_id) está vacío en los Secrets.")
+        st.stop()
 
-    # Escapamos comillas simples para que no rompan la búsqueda interna de Drive
     nombre_escapado = nombre.replace("'", "\\'")
     query = f"name='{nombre_escapado}' and '{id_padre}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
     
@@ -106,8 +111,8 @@ def obtener_o_crear_carpeta(servicio, nombre, id_padre):
             carpeta = servicio.files().create(body=metadata, fields='id').execute()
             return carpeta.get('id')
     except Exception as error:
-        # Esto atrapará el error real de Google y lo forzará en pantalla, saltándose la censura de Streamlit
-        raise Exception(f"Error detallado de Google Drive: {error}. Query intentada: {query}")
+        st.error(f"❌ ERROR DE DRIVE: {str(error)}")
+        st.stop()
 
 def borrar_archivo_o_carpeta(servicio, file_id):
     try:
@@ -190,7 +195,6 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
 # ------------------------------------------------------------------
 # UI INITIALIZATION & SESSION STATE
 # ------------------------------------------------------------------
-# Initialize form values in memory
 if "ui_nombre" not in st.session_state:
     st.session_state.ui_nombre = ""
     st.session_state.ui_precio = ""
@@ -199,20 +203,17 @@ if "ui_nombre" not in st.session_state:
         st.session_state[f"ui_url_{i}"] = ""
     st.session_state.ui_folder_id = None
 
-# 1. Pre-requisite authentication
 clave = st.text_input("Access Key", type="password", placeholder="Enter your key and press Enter")
 
 if not clave:
     st.stop()
 
-# Auth & Data Fetching
 if "current_key" not in st.session_state or st.session_state.current_key != clave:
     with st.spinner("Verifying access key & fetching database..."):
         try:
             hoja_auth, hoja_presets = obtener_hojas()
             col_map_auth = obtener_mapa_columnas(hoja_auth)
             
-            # Buscamos el usuario
             registros = hoja_auth.get_all_records()
             fila_auth, usuario_auth = None, None
             for i, f in enumerate(registros):
@@ -230,7 +231,6 @@ if "current_key" not in st.session_state or st.session_state.current_key != clav
                 st.session_state.col_map = col_map_auth
                 st.session_state.user_presets = obtener_presets(hoja_presets, clave.strip())
                 
-                # Reseteamos la UI al hacer login nuevo
                 st.session_state.preset_selector = "Create New / Manual"
                 st.session_state.ui_nombre = ""
                 st.session_state.ui_precio = ""
@@ -260,7 +260,6 @@ st.divider()
 # ------------------------------------------------------------------
 st.subheader("Post Customization")
 
-# --- PRESET SELECTOR ---
 nombres_presets = ["Create New / Manual"] + [p["datos"]["Nombre_Articulo"] for p in presets_usuario]
 
 def apply_preset():
@@ -274,10 +273,9 @@ def apply_preset():
         st.session_state.ui_folder_id = None
     else:
         preset = next(p for p in presets_usuario if p["datos"]["Nombre_Articulo"] == opcion)
-        st.session_state.ui_nombre = preset["datos"]["Nombre_Articulo"]
+        st.session_state.ui_nombre = str(preset["datos"]["Nombre_Articulo"])
         st.session_state.ui_precio = str(preset["datos"]["Precio"])
         
-        # Parseamos los links guardados en la BD
         links_str = preset["datos"].get("Links", "[]")
         links_list = json.loads(links_str) if links_str else []
         
@@ -292,9 +290,8 @@ def apply_preset():
 
 st.selectbox("Saved Presets", nombres_presets, key="preset_selector", on_change=apply_preset)
 
-# --- IMAGE UPLOADER / CLOUD NOTIFIER ---
 if st.session_state.ui_folder_id:
-    st.success("✅ Images loaded automatically from cloud storage.")
+    st.success("✅ Images loaded automatically from your 15GB cloud storage.")
     imagenes_subidas = [] 
     usando_preset = True
 else:
@@ -305,11 +302,9 @@ else:
     )
     usando_preset = False
 
-# --- TEXT INPUTS ---
 nombre_articulo = st.text_input("Article Name", key="ui_nombre")
 precio = st.text_input("Price", placeholder="e.g. 19.99", key="ui_precio")
 
-# --- DYNAMIC LINKS ---
 st.markdown("##### Links")
 PLATAFORMAS = ["Select an option...", "USFans", "Hipobuy", "ACBuy", "Litbuy", "Mulebuy", "Hoobuy", "Vigorbuy"]
 links_recopilados = []
@@ -327,7 +322,6 @@ for i in range(1, 6):
 
 st.divider()
 
-# --- SAVE OPTIONS & SUBMIT ---
 guardar_preset = st.checkbox("Save this product as a preset (Overwrites if name already exists)")
 enviado = st.button("Send to Telegram", use_container_width=True, type="primary")
 
@@ -335,9 +329,8 @@ enviado = st.button("Send to Telegram", use_container_width=True, type="primary"
 # SUBMIT LOGIC
 # ------------------------------------------------------------------
 if enviado:
-    _, servicio_drive = obtener_servicios_gcp()
+    servicio_drive = obtener_servicio_drive()
     
-    # 1. Image Resolution (Cloud vs Manual)
     if usando_preset:
         with st.spinner("Downloading images from cloud..."):
             imagenes_finales = descargar_imagenes_de_drive(servicio_drive, st.session_state.ui_folder_id)
@@ -347,7 +340,6 @@ if enviado:
     else:
         imagenes_finales = imagenes_subidas
 
-    # 2. Validation
     missing_fields = []
     if not nombre_articulo: missing_fields.append("Article Name")
     if not precio: missing_fields.append("Price")
@@ -358,7 +350,6 @@ if enviado:
         st.warning("Missing required fields: " + ", ".join(missing_fields))
         st.stop()
 
-    # 3. Limit Verification
     hoy = date.today()
     fecha_guardada = None
     if usuario.get("Ultima_Fecha"):
@@ -377,7 +368,6 @@ if enviado:
         st.error(f"Daily limit reached ({limite_diario} posts). Please try again tomorrow.")
         st.stop()
 
-    # 4. Telegram Publishing
     caption = construir_caption(nombre_articulo, precio, links_recopilados)
 
     with st.spinner("Publishing to Telegram..."):
@@ -389,31 +379,22 @@ if enviado:
         st.error(f"Error sending to Telegram: {error_msg}")
         st.stop()
 
-    # 5. Saving Preset Logic (Drive & Sheets)
     if guardar_preset:
         with st.spinner("Saving preset to cloud..."):
             nombre_usuario = usuario.get('Nombre', 'User')
             folder_raiz = st.secrets["gdrive"]["folder_id"]
             
-            # Buscamos si existe ya un preset con el mismo nombre para este usuario
             preset_existente = next((p for p in presets_usuario if p["datos"]["Nombre_Articulo"].strip().lower() == nombre_articulo.strip().lower()), None)
-            
-            # Obtenemos/Creamos la carpeta principal del usuario en Drive
             user_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_usuario, folder_raiz)
             
-            # Si existía uno anterior con el mismo nombre, borramos la carpeta vieja
             if preset_existente:
                 old_folder_id = preset_existente["datos"].get("ID_Carpeta_Drive")
                 if old_folder_id:
                     borrar_archivo_o_carpeta(servicio_drive, old_folder_id)
             
-            # Creamos la carpeta nueva del producto
             prod_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_articulo, user_folder_id)
-            
-            # Subimos las imágenes a Drive
             subir_imagenes_a_drive(servicio_drive, imagenes_finales, prod_folder_id)
             
-            # Guardamos los textos en Sheets
             hoja_auth, hoja_presets = obtener_hojas()
             links_json = json.dumps(links_recopilados)
             guardar_preset_en_sheets(
@@ -425,11 +406,8 @@ if enviado:
                 prod_folder_id, 
                 fila_existente=preset_existente["fila"] if preset_existente else None
             )
-            
-            # Actualizamos la memoria interna (Session state) por si el usuario hace otro post sin recargar
             st.session_state.user_presets = obtener_presets(hoja_presets, clave.strip())
 
-    # 6. Update Counter in Google Sheets
     try:
         hoja_auth, _ = obtener_hojas() 
         actualizaciones = [
