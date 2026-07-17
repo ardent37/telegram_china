@@ -88,15 +88,26 @@ def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id
 
 # --- LOGICA DE GOOGLE DRIVE ---
 def obtener_o_crear_carpeta(servicio, nombre, id_padre):
-    query = f"name='{nombre}' and '{id_padre}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    resultados = servicio.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
-    archivos = resultados.get('files', [])
-    if archivos:
-        return archivos[0].get('id')
-    else:
-        metadata = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [id_padre]}
-        carpeta = servicio.files().create(body=metadata, fields='id').execute()
-        return carpeta.get('id')
+    # Comprobación de seguridad por si el ID de la carpeta principal está vacío
+    if not id_padre:
+        raise Exception("El ID de la carpeta raíz (folder_id) está vacío en los Secrets.")
+
+    # Escapamos comillas simples para que no rompan la búsqueda interna de Drive
+    nombre_escapado = nombre.replace("'", "\\'")
+    query = f"name='{nombre_escapado}' and '{id_padre}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    
+    try:
+        resultados = servicio.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        archivos = resultados.get('files', [])
+        if archivos:
+            return archivos[0].get('id')
+        else:
+            metadata = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [id_padre]}
+            carpeta = servicio.files().create(body=metadata, fields='id').execute()
+            return carpeta.get('id')
+    except Exception as error:
+        # Esto atrapará el error real de Google y lo forzará en pantalla, saltándose la censura de Streamlit
+        raise Exception(f"Error detallado de Google Drive: {error}. Query intentada: {query}")
 
 def borrar_archivo_o_carpeta(servicio, file_id):
     try:
