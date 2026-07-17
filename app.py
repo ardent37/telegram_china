@@ -49,14 +49,12 @@ NOMBRE_PESTANA_PRESETS = "Productos_Guardados"
 # ------------------------------------------------------------------
 # GOOGLE CLOUD (SHEETS & DRIVE) CONNECTION
 # ------------------------------------------------------------------
-@st.cache_resource(show_spinner=False)
 def obtener_servicio_sheets():
     alcances = ["https://www.googleapis.com/auth/spreadsheets"]
     credenciales_dict = dict(st.secrets["gcp_service_account"])
     credenciales = ServiceAccountCredentials.from_service_account_info(credenciales_dict, scopes=alcances)
     return gspread.authorize(credenciales)
 
-@st.cache_resource(show_spinner=False)
 def obtener_servicio_drive():
     credenciales = UserCredentials(
         token=None,
