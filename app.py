@@ -7,7 +7,6 @@
 import html
 import json
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 import gspread
 import requests
@@ -45,8 +44,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 NOMBRE_PESTANA = "Usuarios" 
-ZONA_HORARIA = ZoneInfo("Europe/Madrid")
-
 
 # ------------------------------------------------------------------
 # GOOGLE SHEETS CONNECTION
@@ -116,18 +113,15 @@ def construir_caption(nombre, precio, links_data):
 
 
 # ------------------------------------------------------------------
-# TELEGRAM SEND LOGIC (Updated with scheduling support)
+# TELEGRAM SEND LOGIC
 # ------------------------------------------------------------------
-def enviar_a_telegram(bot_token, chat_id, caption, imagenes, schedule_timestamp=None):
+def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
     try:
         if len(imagenes) == 1:
             archivo = imagenes[0]
             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
             files = {"photo": (archivo.name, archivo.getvalue(), archivo.type)}
             data = {"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"}
-            if schedule_timestamp:
-                data["schedule_date"] = schedule_timestamp
-                
             respuesta = requests.post(url, data=data, files=files, timeout=30)
 
         else:
@@ -144,9 +138,6 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes, schedule_timestamp=
                 files[clave_archivo] = (archivo.name, archivo.getvalue(), archivo.type)
 
             data = {"chat_id": chat_id, "media": json.dumps(media)}
-            if schedule_timestamp:
-                data["schedule_date"] = schedule_timestamp
-                
             respuesta = requests.post(url, data=data, files=files, timeout=60)
 
         resultado = respuesta.json()
@@ -162,7 +153,7 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes, schedule_timestamp=
 # UI & LOGIC
 # ------------------------------------------------------------------
 
-# 1. Pre-requisite authentication window (with API optimization via Session State)
+# 1. Pre-requisite authentication window
 clave = st.text_input("Access Key", type="password", placeholder="Enter your key and press Enter")
 
 if not clave:
@@ -234,26 +225,10 @@ for i in range(1, 6):
 
 st.divider()
 
-# 3. Scheduling Section
-st.markdown("##### Schedule")
-programar = st.checkbox("Schedule post (Do not publish immediately)")
-
-schedule_timestamp = None
-if programar:
-    col_d, col_t = st.columns(2)
-    # Get Date and Time separately
-    fecha_prog = col_d.date_input("Date", min_value=date.today())
-    hora_prog = col_t.time_input("Time")
-    
-    # Combine and set timezone to Spain
-    dt_prog = datetime.combine(fecha_prog, hora_prog)
-    dt_aware = dt_prog.replace(tzinfo=ZONA_HORARIA)
-    schedule_timestamp = int(dt_aware.timestamp())
-
 # Submit Button
 enviado = st.button("Send to Telegram", use_container_width=True, type="primary")
 
-# 4. Submit Logic
+# 3. Submit Logic
 if enviado:
     missing_fields = []
     if not nombre_articulo: missing_fields.append("Article Name")
@@ -264,11 +239,6 @@ if enviado:
     if missing_fields:
         st.warning("Missing required fields: " + ", ".join(missing_fields))
         st.stop()
-        
-    if schedule_timestamp:
-        if schedule_timestamp < int(datetime.now(ZONA_HORARIA).timestamp()) + 10:
-            st.error("The scheduled time must be at least a few seconds in the future.")
-            st.stop()
 
     # --- Limit Verification ---
     hoy = date.today()
@@ -297,7 +267,7 @@ if enviado:
     with st.spinner("Publishing to Telegram..."):
         bot_token = st.secrets["telegram"]["bot_token"]
         channel_id = st.secrets["telegram"]["channel_id"]
-        exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes, schedule_timestamp)
+        exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes)
 
     if not exito:
         st.error(f"Error sending to Telegram: {error_msg}")
@@ -315,8 +285,4 @@ if enviado:
         st.stop()
 
     restantes = limite_diario - (usos_efectivos + 1)
-    
-    if schedule_timestamp:
-        st.success(f"Successfully scheduled for {dt_aware.strftime('%Y-%m-%d %H:%M')}! You have {restantes} posts left today.")
-    else:
-        st.success(f"Successfully published! You have {restantes} posts left today.")
+    st.success(f"Successfully published! You have {restantes} posts left today.")
