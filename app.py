@@ -32,7 +32,7 @@ st.markdown(
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
     
-    /* Protegemos los iconos de Material para que slinean bien */
+    /* Protegemos los iconos de Material para que se alineen bien */
     .stIconMaterial, .material-symbols-rounded {
         font-family: 'Material Symbols Rounded' !important;
     }
@@ -43,7 +43,7 @@ st.markdown(
 
     [data-testid="stMainBlockContainer"] {
         max-width: 760px;
-        margin: 5rem auto 3rem auto; /* Aumentado el margen superior a 5rem para despegarlo del techo */
+        margin: 5rem auto 3rem auto; 
         background-color: #FFFFFF;
         border-radius: 18px;
         padding: 2.75rem 3rem 3rem 3rem;
@@ -69,40 +69,43 @@ st.markdown(
         margin-bottom: 2rem;
     }
 
-    /* Botón primario -> "Send to Telegram" */
+    /* Botones PRIMARIOS -> Verde Brillante (Verify & Save as preset) */
     [data-testid="stBaseButton-primary"] {
-        background-color: #7EC8E3;
-        color: #0B1F2A;
-        border: none;
+        background-color: #00E676 !important;
+        color: #0B1F2A !important;
+        border: none !important;
         border-radius: 10px;
-        font-weight: 600;
+        font-weight: 700;
         padding-top: 0.6rem;
         padding-bottom: 0.6rem;
-        box-shadow: 0 2px 8px rgba(126, 200, 227, 0.35);
-        transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+        box-shadow: 0 4px 10px rgba(0, 230, 118, 0.35) !important;
+        transition: all 0.2s ease;
     }
     [data-testid="stBaseButton-primary"]:hover {
-        background-color: #5FB8DA;
-        box-shadow: 0 4px 14px rgba(95, 184, 218, 0.45);
+        background-color: #00C853 !important;
+        box-shadow: 0 6px 14px rgba(0, 230, 118, 0.45) !important;
         transform: translateY(-1px);
     }
     [data-testid="stBaseButton-primary"]:active {
         transform: translateY(0);
     }
 
-    /* Botón secundario -> "Save as preset" */
+    /* Botones SECUNDARIOS -> Azul (Send to Telegram) */
     [data-testid="stBaseButton-secondary"] {
-        background-color: #FFFFFF;
-        color: #37474F;
-        border: 1.5px solid #DCE3E8;
+        background-color: #7EC8E3 !important;
+        color: #0B1F2A !important;
+        border: none !important;
         border-radius: 10px;
-        font-weight: 500;
+        font-weight: 700;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+        box-shadow: 0 2px 8px rgba(126, 200, 227, 0.35) !important;
         transition: all 0.2s ease;
     }
     [data-testid="stBaseButton-secondary"]:hover {
-        border-color: #7EC8E3;
-        color: #2C7DA0;
-        background-color: #F3FAFD;
+        background-color: #5FB8DA !important;
+        box-shadow: 0 4px 14px rgba(95, 184, 218, 0.45) !important;
+        transform: translateY(-1px);
     }
 
     /* Inputs de texto */
@@ -113,18 +116,6 @@ st.markdown(
     [data-testid="stTextInputRootElement"]:focus-within {
         border-color: #7EC8E3 !important;
         box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
-    }
-
-    /* Inyectar símbolo $ fijo al final de la caja del Precio */
-    div[data-testid="stTextInput"]:has(p:contains("Price")) div[data-baseweb="input"]::after {
-        content: "$";
-        position: absolute;
-        right: 15px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #7C8A94;
-        font-weight: 600;
-        pointer-events: none;
     }
 
     /* Zona de subida de imágenes - Limpieza visual */
@@ -139,7 +130,6 @@ st.markdown(
         border-color: #7EC8E3;
         background-color: #F3FAFD;
     }
-    /* Ocultar el texto redundante de drag and drop y el límite de mb */
     [data-testid="stFileUploadDropzone"] div[data-testid="stMarkdownContainer"] p {
         display: none !important;
     }
@@ -172,7 +162,6 @@ def obtener_servicio_sheets():
     credenciales = ServiceAccountCredentials.from_service_account_info(credenciales_dict, scopes=alcances)
     return gspread.authorize(credenciales)
 
-
 def obtener_servicio_drive():
     credenciales = UserCredentials(
         token=None,
@@ -183,18 +172,15 @@ def obtener_servicio_drive():
     )
     return build("drive", "v3", credentials=credenciales)
 
-
 def obtener_hojas():
     cliente_sheets = obtener_servicio_sheets()
     id_hoja = st.secrets["gsheets"]["sheet_id"]
     libro = cliente_sheets.open_by_key(id_hoja)
     return libro.worksheet(NOMBRE_PESTANA_USUARIOS), libro.worksheet(NOMBRE_PESTANA_PRESETS)
 
-
 def obtener_mapa_columnas(hoja):
     encabezados = hoja.row_values(1)
     return {nombre.strip(): idx + 1 for idx, nombre in enumerate(encabezados)}
-
 
 # --- LOGICA DE PRESETS EN SHEETS ---
 def obtener_presets(hoja_presets, clave):
@@ -205,13 +191,11 @@ def obtener_presets(hoja_presets, clave):
             presets.append({"fila": i + 2, "datos": fila})
     return presets
 
-
 def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id_carpeta, fila_existente=None):
     if fila_existente:
         hoja_presets.update(f"A{fila_existente}:E{fila_existente}", [[clave, nombre, precio, links_json, id_carpeta]])
     else:
         hoja_presets.append_row([clave, nombre, precio, links_json, id_carpeta])
-
 
 # --- LOGICA DE GOOGLE DRIVE ---
 def obtener_o_crear_carpeta(servicio, nombre, id_padre):
@@ -234,13 +218,11 @@ def obtener_o_crear_carpeta(servicio, nombre, id_padre):
         st.error(f"❌ ERROR DE DRIVE: {str(error)}")
         st.stop()
 
-
 def borrar_archivo_o_carpeta(servicio, file_id):
     try:
         servicio.files().delete(fileId=file_id).execute()
     except Exception:
         pass
-
 
 def subir_imagenes_a_drive(servicio, imagenes, id_carpeta):
     for img in imagenes:
@@ -249,13 +231,11 @@ def subir_imagenes_a_drive(servicio, imagenes, id_carpeta):
         metadata = {"name": img.name, "parents": [id_carpeta]}
         servicio.files().create(body=metadata, media_body=media, fields="id").execute()
 
-
 class ImagenEnMemoria(io.BytesIO):
     def __init__(self, content, name, mimetype):
         super().__init__(content)
         self.name = name
         self.type = mimetype
-
 
 def descargar_imagenes_de_drive(servicio, id_carpeta):
     query = f"'{id_carpeta}' in parents and trashed=false"
@@ -274,7 +254,6 @@ def descargar_imagenes_de_drive(servicio, id_carpeta):
         imagenes_descargadas.append(ImagenEnMemoria(fh.read(), arch["name"], arch["mimeType"]))
     return imagenes_descargadas
 
-
 def obtener_imagenes_finales(servicio_drive, usando_preset, folder_id, imagenes_subidas):
     if usando_preset:
         with st.spinner("Downloading images from cloud..."):
@@ -284,7 +263,6 @@ def obtener_imagenes_finales(servicio_drive, usando_preset, folder_id, imagenes_
                 st.stop()
             return imagenes
     return imagenes_subidas
-
 
 def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuario, clave, nombre_articulo, precio, links_recopilados, imagenes_finales):
     nombre_usuario = usuario.get("Nombre", "User")
@@ -322,16 +300,15 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
 def construir_caption(nombre, precio, links_data):
     texto = f"<b>{html.escape(nombre)}</b>\n\n"
     
-    # Aseguramos que el precio tenga un símbolo de dólar
+    # Añadimos el $ al enviarlo por si se le olvida al usuario
     precio_str = str(precio).strip()
-    if not precio_str.endswith('$'):
+    if precio_str and not precio_str.endswith('$'):
         precio_str += '$'
         
     texto += f"<b>Price:</b> {html.escape(precio_str)}\n\n"
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
     return texto
-
 
 def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
     try:
@@ -382,7 +359,6 @@ def calcular_estado_uso(usuario):
     usos_efectivos = 0 if fecha_guardada != hoy else usos_hoy_actual
     return usos_efectivos, limite_diario, hoy
 
-
 def validar_campos_post(nombre, precio, links, imagenes):
     faltantes = []
     if not nombre:
@@ -419,14 +395,23 @@ if "ui_nombre" not in st.session_state:
     st.session_state.ui_folder_id = None
     st.session_state.num_visible_links = 2
 
-st.markdown("<h4 style='font-size: 1.05rem; color: #16232D; margin-bottom: 0.2rem;'>Security</h4>", unsafe_allow_html=True)
-col_key, col_btn = st.columns([4, 1], vertical_alignment="bottom")
+# Usamos un form interno para forzar la necesidad de dar al botón (o al Enter explícito)
+# y así bloquear el mensaje de "Press enter to apply" y el refresco automático de Streamlit.
+if "input_key" not in st.session_state:
+    st.session_state.input_key = ""
 
-with col_key:
-    # Ocultamos la etiqueta textualmente para que quede alineado con el botón, pero funcional.
-    clave = st.text_input("Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed")
-with col_btn:
-    st.button("Verify", use_container_width=True)
+with st.form("auth_form", border=False):
+    st.markdown("<h4 style='font-size: 1.05rem; color: #16232D; margin-bottom: 0.2rem;'>Security</h4>", unsafe_allow_html=True)
+    col_key, col_btn = st.columns([4, 1], vertical_alignment="bottom")
+    with col_key:
+        clave_input = st.text_input("Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed")
+    with col_btn:
+        verify_pressed = st.form_submit_button("Verify", type="primary", use_container_width=True)
+
+if verify_pressed:
+    st.session_state.input_key = clave_input
+
+clave = st.session_state.input_key
 
 if not clave:
     st.stop()
@@ -488,7 +473,6 @@ st.subheader("Post Customization")
 
 nombres_presets = ["Create New / Manual"] + [p["datos"]["Nombre_Articulo"] for p in presets_usuario]
 
-
 def apply_preset():
     opcion = st.session_state.preset_selector
     if opcion == "Create New / Manual":
@@ -528,7 +512,6 @@ if st.session_state.ui_folder_id:
     imagenes_subidas = []
     usando_preset = True
 else:
-    # Se ha renombrado a Product Images para no duplicar el upload
     imagenes_subidas = st.file_uploader(
         "Product Images",
         type=["png", "jpg", "jpeg"],
@@ -537,7 +520,14 @@ else:
     usando_preset = False
 
 nombre_articulo = st.text_input("Article Name", key="ui_nombre")
-precio = st.text_input("Price", placeholder="e.g. 19.99", key="ui_precio")
+
+# Aquí reducimos el recuadro del precio y sacamos el $ explícitamente a un lado
+col_price_input, col_price_sym, _ = st.columns([2, 0.5, 5], vertical_alignment="bottom")
+with col_price_input:
+    precio = st.text_input("Price", placeholder="19.99", key="ui_precio")
+with col_price_sym:
+    st.markdown("<div style='font-size: 1.4rem; font-weight: 600; color: #16232D; margin-bottom: 0.4rem;'>$</div>", unsafe_allow_html=True)
+
 
 st.markdown("##### Links")
 links_recopilados = []
@@ -554,7 +544,7 @@ for i in range(1, st.session_state.num_visible_links + 1):
         links_recopilados.append((plat_seleccionada, link_url.strip()))
 
 if st.session_state.num_visible_links < MAX_LINKS:
-    if st.button("➕ Add another link"):
+    if st.button("➕ Add another link", type="tertiary"):
         st.session_state.num_visible_links += 1
         st.rerun()
 
@@ -562,9 +552,11 @@ st.divider()
 
 col_send, col_save = st.columns([2, 1])
 with col_send:
-    enviado = st.button("📨 Send to Telegram", use_container_width=True, type="primary")
+    # Este botón es secundario en el CSS (Azul)
+    enviado = st.button("📨 Send to Telegram", use_container_width=True, type="secondary")
 with col_save:
-    guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True)
+    # Este botón es primario en el CSS (Verde brillante)
+    guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True, type="primary")
 
 st.caption("Saving a preset does not publish anything and does not count against your daily limit.")
 
