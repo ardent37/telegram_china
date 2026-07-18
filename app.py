@@ -20,17 +20,15 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ------------------------------------------------------------------
 # PAGE CONFIGURATION & CSS
 # ------------------------------------------------------------------
-st.set_page_config(page_title="Telegram Publisher", page_icon="📤", layout="centered")
+st.set_page_config(page_title="Telegram Publisher", layout="centered")
 
-# NOTA: los selectores data-testid de abajo se comprobaron contra el bundle
-# de Streamlit 1.59 instalado (grep sobre el JS del frontend). La regla
-# anterior [data-testid="baseButton-main"] no existe en versiones recientes
-# (el testid real es "stBaseButton-<kind>"), por eso el botón no se pintaba
-# como se esperaba.
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* Importamos las fuentes de iconos para forzar que el ojo de la contraseña se vea como un icono y no como la palabra "visibility" */
+    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0');
 
     [data-testid="stAppViewContainer"] * {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -40,9 +38,10 @@ st.markdown(
         background-color: #F4F6F8;
     }
 
+    /* Ajustamos el margen superior (5rem) para despegar la caja del techo */
     [data-testid="stMainBlockContainer"] {
         max-width: 760px;
-        margin: 2rem auto;
+        margin: 5rem auto 3rem auto;
         background-color: #FFFFFF;
         border-radius: 18px;
         padding: 2.75rem 3rem 3rem 3rem;
@@ -56,14 +55,6 @@ st.markdown(
     }
 
     /* Cabecera */
-    .app-kicker {
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.72rem;
-        font-weight: 600;
-        color: #5FB8DA;
-        margin-bottom: 0.25rem;
-    }
     .app-title {
         font-size: 1.9rem;
         font-weight: 700;
@@ -73,10 +64,10 @@ st.markdown(
     .app-subtitle {
         color: #7C8A94;
         font-size: 0.95rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 2rem;
     }
 
-    /* Botón primario -> "Send to Telegram" (azul claro, es el CTA dominante) */
+    /* Botón primario -> "Send to Telegram" */
     [data-testid="stBaseButton-primary"] {
         background-color: #7EC8E3;
         color: #0B1F2A;
@@ -97,8 +88,7 @@ st.markdown(
         transform: translateY(0);
     }
 
-    /* Botón secundario -> "Save as preset" (discreto a propósito: no debe competir
-       visualmente con el CTA principal, es una acción de apoyo) */
+    /* Botón secundario -> "Save as preset" */
     [data-testid="stBaseButton-secondary"] {
         background-color: #FFFFFF;
         color: #37474F;
@@ -123,19 +113,37 @@ st.markdown(
         box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
     }
 
+    /* Inyectar un "$" visual fijo dentro del recuadro del Precio */
+    div[data-testid="stTextInput"] label:has(p:contains("Price")) + div::after {
+        content: "$";
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #7C8A94;
+        font-weight: 600;
+        pointer-events: none;
+    }
+
     /* Zona de subida de imágenes */
-    [data-testid="stFileUploaderDropzone"] {
+    [data-testid="stFileUploadDropzone"] {
         background-color: #FAFBFC;
         border: 2px dashed #CBD5DA;
         border-radius: 14px;
         transition: border-color 0.2s ease, background-color 0.2s ease;
+        padding: 2.5rem 1rem !important; /* Ajuste para hacerlo más limpio */
     }
-    [data-testid="stFileUploaderDropzone"]:hover {
+    [data-testid="stFileUploadDropzone"]:hover {
         border-color: #7EC8E3;
         background-color: #F3FAFD;
     }
+    
+    /* Ocultar el texto redundante de drag and drop en el uploader */
+    [data-testid="stFileUploadDropzone"] small {
+        display: none !important;
+    }
 
-    /* Alertas (success / error / warning / info) */
+    /* Alertas */
     [data-testid="stAlertContainer"] {
         border-radius: 10px;
         animation: fadeInUp 0.3s ease;
@@ -264,9 +272,6 @@ def descargar_imagenes_de_drive(servicio, id_carpeta):
 
 
 def obtener_imagenes_finales(servicio_drive, usando_preset, folder_id, imagenes_subidas):
-    """Punto único que decide de dónde vienen las imágenes a publicar/guardar:
-    del preset ya guardado en Drive, o de lo que se acaba de subir a mano.
-    La usan tanto 'Send to Telegram' como 'Save as preset' para no duplicar lógica."""
     if usando_preset:
         with st.spinner("Downloading images from cloud..."):
             imagenes = descargar_imagenes_de_drive(servicio_drive, folder_id)
@@ -278,8 +283,6 @@ def obtener_imagenes_finales(servicio_drive, usando_preset, folder_id, imagenes_
 
 
 def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuario, clave, nombre_articulo, precio, links_recopilados, imagenes_finales):
-    """Sube las imágenes a Drive (sustituyendo la carpeta anterior si el preset ya
-    existía con ese nombre) y guarda/actualiza la fila en 'Productos_Guardados'."""
     nombre_usuario = usuario.get("Nombre", "User")
     folder_raiz = st.secrets["gdrive"]["folder_id"]
 
@@ -314,7 +317,13 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
 # ------------------------------------------------------------------
 def construir_caption(nombre, precio, links_data):
     texto = f"<b>{html.escape(nombre)}</b>\n\n"
-    texto += f"<b>Price:</b> {html.escape(precio)}\n\n"
+    
+    # Aseguramos que el precio tenga un símbolo de dólar en Telegram 
+    precio_str = str(precio).strip()
+    if not precio_str.endswith('$'):
+        precio_str += '$'
+    
+    texto += f"<b>Price:</b> {html.escape(precio_str)}\n\n"
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
     return texto
@@ -355,8 +364,6 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
 # LÍMITE DIARIO
 # ------------------------------------------------------------------
 def calcular_estado_uso(usuario):
-    """Calcula cuántos usos 'efectivos' tiene hoy el usuario, teniendo en cuenta que
-    el contador se resetea si la última fecha registrada no es la de hoy."""
     hoy = date.today()
     fecha_guardada = None
     if usuario.get("Ultima_Fecha"):
@@ -390,9 +397,8 @@ def validar_campos_post(nombre, precio, links, imagenes):
 # ------------------------------------------------------------------
 st.markdown(
     """
-    <div class="app-kicker">Internal Tool</div>
-    <div class="app-title">📤 Telegram Post Publisher</div>
-    <div class="app-subtitle">Publish product posts to the channel in a couple of clicks.</div>
+    <div class="app-title">Telegram Post Publisher</div>
+    <div class="app-subtitle">Created by Salty. Contact me at saltyreps@gmail.com or +34637646098</div>
     """,
     unsafe_allow_html=True,
 )
@@ -407,9 +413,16 @@ if "ui_nombre" not in st.session_state:
         st.session_state[f"ui_plat_{i}"] = "Select an option..."
         st.session_state[f"ui_url_{i}"] = ""
     st.session_state.ui_folder_id = None
-    st.session_state.num_visible_links = 2  # Empezamos con 2 filas visibles, no 5 -> menos ruido visual
+    st.session_state.num_visible_links = 2
 
-clave = st.text_input("Access Key", type="password", placeholder="Enter your key and press Enter")
+# Verificación de contraseña amigable con la UI
+st.markdown("<b>Security</b>", unsafe_allow_html=True)
+col_key, col_btn = st.columns([4, 1])
+with col_key:
+    # label_visibility="collapsed" alinea el cuadro de texto directamente con el botón
+    clave = st.text_input("Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed")
+with col_btn:
+    st.button("Verify", use_container_width=True)
 
 if not clave:
     st.stop()
@@ -498,7 +511,6 @@ def apply_preset():
                 st.session_state[f"ui_plat_{i}"] = "Select an option..."
                 st.session_state[f"ui_url_{i}"] = ""
         st.session_state.ui_folder_id = preset["datos"].get("ID_Carpeta_Drive")
-        # Aseguramos que se vean todas las filas que trae el preset, aunque sean más de 2
         st.session_state.num_visible_links = max(2, len(links_list))
 
 
@@ -512,8 +524,9 @@ if st.session_state.ui_folder_id:
     imagenes_subidas = []
     usando_preset = True
 else:
+    # Modificación del label para quitar el 'Upload' redundante.
     imagenes_subidas = st.file_uploader(
-        "Upload Images (Drag and drop supported)",
+        "Product Images",
         type=["png", "jpg", "jpeg"],
         accept_multiple_files=True,
     )
