@@ -26,22 +26,24 @@ st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    /* Importamos las fuentes de iconos para forzar que el ojo de la contraseña se vea como un icono y no como la palabra "visibility" */
-    @import url('https://fonts.googleapis.com/icon?family=Material+Icons');
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0');
 
-    [data-testid="stAppViewContainer"] * {
+    /* Aplicamos la fuente solo a textos estándar para no romper la fuente de iconos (el ojo de visibility) */
+    p, h1, h2, h3, h4, h5, h6, span, div, input, button, label {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    
+    /* Protegemos los iconos de Material para que slinean bien */
+    .stIconMaterial, .material-symbols-rounded {
+        font-family: 'Material Symbols Rounded' !important;
     }
 
     [data-testid="stMain"] {
         background-color: #F4F6F8;
     }
 
-    /* Ajustamos el margen superior (5rem) para despegar la caja del techo */
     [data-testid="stMainBlockContainer"] {
         max-width: 760px;
-        margin: 5rem auto 3rem auto;
+        margin: 5rem auto 3rem auto; /* Aumentado el margen superior a 5rem para despegarlo del techo */
         background-color: #FFFFFF;
         border-radius: 18px;
         padding: 2.75rem 3rem 3rem 3rem;
@@ -113,8 +115,8 @@ st.markdown(
         box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
     }
 
-    /* Inyectar un "$" visual fijo dentro del recuadro del Precio */
-    div[data-testid="stTextInput"] label:has(p:contains("Price")) + div::after {
+    /* Inyectar símbolo $ fijo al final de la caja del Precio */
+    div[data-testid="stTextInput"]:has(p:contains("Price")) div[data-baseweb="input"]::after {
         content: "$";
         position: absolute;
         right: 15px;
@@ -125,20 +127,22 @@ st.markdown(
         pointer-events: none;
     }
 
-    /* Zona de subida de imágenes */
+    /* Zona de subida de imágenes - Limpieza visual */
     [data-testid="stFileUploadDropzone"] {
         background-color: #FAFBFC;
         border: 2px dashed #CBD5DA;
         border-radius: 14px;
         transition: border-color 0.2s ease, background-color 0.2s ease;
-        padding: 2.5rem 1rem !important; /* Ajuste para hacerlo más limpio */
+        padding: 2.5rem 1rem !important; 
     }
     [data-testid="stFileUploadDropzone"]:hover {
         border-color: #7EC8E3;
         background-color: #F3FAFD;
     }
-    
-    /* Ocultar el texto redundante de drag and drop en el uploader */
+    /* Ocultar el texto redundante de drag and drop y el límite de mb */
+    [data-testid="stFileUploadDropzone"] div[data-testid="stMarkdownContainer"] p {
+        display: none !important;
+    }
     [data-testid="stFileUploadDropzone"] small {
         display: none !important;
     }
@@ -318,11 +322,11 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
 def construir_caption(nombre, precio, links_data):
     texto = f"<b>{html.escape(nombre)}</b>\n\n"
     
-    # Aseguramos que el precio tenga un símbolo de dólar en Telegram 
+    # Aseguramos que el precio tenga un símbolo de dólar
     precio_str = str(precio).strip()
     if not precio_str.endswith('$'):
         precio_str += '$'
-    
+        
     texto += f"<b>Price:</b> {html.escape(precio_str)}\n\n"
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
@@ -415,11 +419,11 @@ if "ui_nombre" not in st.session_state:
     st.session_state.ui_folder_id = None
     st.session_state.num_visible_links = 2
 
-# Verificación de contraseña amigable con la UI
-st.markdown("<b>Security</b>", unsafe_allow_html=True)
-col_key, col_btn = st.columns([4, 1])
+st.markdown("<h4 style='font-size: 1.05rem; color: #16232D; margin-bottom: 0.2rem;'>Security</h4>", unsafe_allow_html=True)
+col_key, col_btn = st.columns([4, 1], vertical_alignment="bottom")
+
 with col_key:
-    # label_visibility="collapsed" alinea el cuadro de texto directamente con el botón
+    # Ocultamos la etiqueta textualmente para que quede alineado con el botón, pero funcional.
     clave = st.text_input("Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed")
 with col_btn:
     st.button("Verify", use_container_width=True)
@@ -524,7 +528,7 @@ if st.session_state.ui_folder_id:
     imagenes_subidas = []
     usando_preset = True
 else:
-    # Modificación del label para quitar el 'Upload' redundante.
+    # Se ha renombrado a Product Images para no duplicar el upload
     imagenes_subidas = st.file_uploader(
         "Product Images",
         type=["png", "jpg", "jpeg"],
