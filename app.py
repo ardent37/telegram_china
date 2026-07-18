@@ -20,31 +20,136 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ------------------------------------------------------------------
 # PAGE CONFIGURATION & CSS
 # ------------------------------------------------------------------
-st.set_page_config(page_title="Telegram Publisher", layout="centered")
+st.set_page_config(page_title="Telegram Publisher", page_icon="📤", layout="centered")
 
-st.markdown("""
+# NOTA: los selectores data-testid de abajo se comprobaron contra el bundle
+# de Streamlit 1.59 instalado (grep sobre el JS del frontend). La regla
+# anterior [data-testid="baseButton-main"] no existe en versiones recientes
+# (el testid real es "stBaseButton-<kind>"), por eso el botón no se pintaba
+# como se esperaba.
+st.markdown(
+    """
     <style>
-    [data-testid="baseButton-main"] {
-        background-color: #ADD8E6 !important;
-        color: #000000 !important;
-        border: 1px solid #ADD8E6 !important;
-        box-shadow: none !important;
-        font-weight: 500 !important;
-        transition: all 0.3s ease;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    [data-testid="stAppViewContainer"] * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-    [data-testid="baseButton-main"]:hover {
-        background-color: #87CEEB !important;
+
+    [data-testid="stMain"] {
+        background-color: #F4F6F8;
     }
-    [data-testid="stFileUploadDropzone"] {
-        padding: 4rem !important;
-        background-color: #F8F9FA !important;
-        border: 2px dashed #CCCCCC !important;
+
+    [data-testid="stMainBlockContainer"] {
+        max-width: 760px;
+        margin: 2rem auto;
+        background-color: #FFFFFF;
+        border-radius: 18px;
+        padding: 2.75rem 3rem 3rem 3rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 10px 30px rgba(15, 23, 42, 0.05);
+        animation: fadeInUp 0.45s ease;
+    }
+
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Cabecera */
+    .app-kicker {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #5FB8DA;
+        margin-bottom: 0.25rem;
+    }
+    .app-title {
+        font-size: 1.9rem;
+        font-weight: 700;
+        color: #16232D;
+        margin: 0 0 0.35rem 0;
+    }
+    .app-subtitle {
+        color: #7C8A94;
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Botón primario -> "Send to Telegram" (azul claro, es el CTA dominante) */
+    [data-testid="stBaseButton-primary"] {
+        background-color: #7EC8E3;
+        color: #0B1F2A;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+        box-shadow: 0 2px 8px rgba(126, 200, 227, 0.35);
+        transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+    }
+    [data-testid="stBaseButton-primary"]:hover {
+        background-color: #5FB8DA;
+        box-shadow: 0 4px 14px rgba(95, 184, 218, 0.45);
+        transform: translateY(-1px);
+    }
+    [data-testid="stBaseButton-primary"]:active {
+        transform: translateY(0);
+    }
+
+    /* Botón secundario -> "Save as preset" (discreto a propósito: no debe competir
+       visualmente con el CTA principal, es una acción de apoyo) */
+    [data-testid="stBaseButton-secondary"] {
+        background-color: #FFFFFF;
+        color: #37474F;
+        border: 1.5px solid #DCE3E8;
+        border-radius: 10px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    [data-testid="stBaseButton-secondary"]:hover {
+        border-color: #7EC8E3;
+        color: #2C7DA0;
+        background-color: #F3FAFD;
+    }
+
+    /* Inputs de texto */
+    [data-testid="stTextInputRootElement"] {
+        border-radius: 8px !important;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+    [data-testid="stTextInputRootElement"]:focus-within {
+        border-color: #7EC8E3 !important;
+        box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
+    }
+
+    /* Zona de subida de imágenes */
+    [data-testid="stFileUploaderDropzone"] {
+        background-color: #FAFBFC;
+        border: 2px dashed #CBD5DA;
+        border-radius: 14px;
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: #7EC8E3;
+        background-color: #F3FAFD;
+    }
+
+    /* Alertas (success / error / warning / info) */
+    [data-testid="stAlertContainer"] {
+        border-radius: 10px;
+        animation: fadeInUp 0.3s ease;
     }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
 NOMBRE_PESTANA_USUARIOS = "Usuarios"
 NOMBRE_PESTANA_PRESETS = "Productos_Guardados"
+PLATAFORMAS = ["Select an option...", "USFans", "Hipobuy", "ACBuy", "Litbuy", "Mulebuy", "Hoobuy", "Vigorbuy"]
+MAX_LINKS = 5
+
 
 # ------------------------------------------------------------------
 # GOOGLE CLOUD (SHEETS & DRIVE) CONNECTION
@@ -55,15 +160,17 @@ def obtener_servicio_sheets():
     credenciales = ServiceAccountCredentials.from_service_account_info(credenciales_dict, scopes=alcances)
     return gspread.authorize(credenciales)
 
+
 def obtener_servicio_drive():
     credenciales = UserCredentials(
         token=None,
         refresh_token=st.secrets["gdrive"]["refresh_token"],
         token_uri="https://oauth2.googleapis.com/token",
         client_id=st.secrets["gdrive"]["client_id"],
-        client_secret=st.secrets["gdrive"]["client_secret"]
+        client_secret=st.secrets["gdrive"]["client_secret"],
     )
-    return build('drive', 'v3', credentials=credenciales)
+    return build("drive", "v3", credentials=credenciales)
+
 
 def obtener_hojas():
     cliente_sheets = obtener_servicio_sheets()
@@ -71,9 +178,11 @@ def obtener_hojas():
     libro = cliente_sheets.open_by_key(id_hoja)
     return libro.worksheet(NOMBRE_PESTANA_USUARIOS), libro.worksheet(NOMBRE_PESTANA_PRESETS)
 
+
 def obtener_mapa_columnas(hoja):
     encabezados = hoja.row_values(1)
     return {nombre.strip(): idx + 1 for idx, nombre in enumerate(encabezados)}
+
 
 # --- LOGICA DE PRESETS EN SHEETS ---
 def obtener_presets(hoja_presets, clave):
@@ -84,11 +193,13 @@ def obtener_presets(hoja_presets, clave):
             presets.append({"fila": i + 2, "datos": fila})
     return presets
 
+
 def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id_carpeta, fila_existente=None):
     if fila_existente:
         hoja_presets.update(f"A{fila_existente}:E{fila_existente}", [[clave, nombre, precio, links_json, id_carpeta]])
     else:
         hoja_presets.append_row([clave, nombre, precio, links_json, id_carpeta])
+
 
 # --- LOGICA DE GOOGLE DRIVE ---
 def obtener_o_crear_carpeta(servicio, nombre, id_padre):
@@ -98,19 +209,19 @@ def obtener_o_crear_carpeta(servicio, nombre, id_padre):
 
     nombre_escapado = nombre.replace("'", "\\'")
     query = f"name='{nombre_escapado}' and '{id_padre}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    
+
     try:
-        resultados = servicio.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
-        archivos = resultados.get('files', [])
+        resultados = servicio.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
+        archivos = resultados.get("files", [])
         if archivos:
-            return archivos[0].get('id')
-        else:
-            metadata = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [id_padre]}
-            carpeta = servicio.files().create(body=metadata, fields='id').execute()
-            return carpeta.get('id')
+            return archivos[0].get("id")
+        metadata = {"name": nombre, "mimeType": "application/vnd.google-apps.folder", "parents": [id_padre]}
+        carpeta = servicio.files().create(body=metadata, fields="id").execute()
+        return carpeta.get("id")
     except Exception as error:
         st.error(f"❌ ERROR DE DRIVE: {str(error)}")
         st.stop()
+
 
 def borrar_archivo_o_carpeta(servicio, file_id):
     try:
@@ -118,12 +229,14 @@ def borrar_archivo_o_carpeta(servicio, file_id):
     except Exception:
         pass
 
+
 def subir_imagenes_a_drive(servicio, imagenes, id_carpeta):
     for img in imagenes:
         img.seek(0)
         media = MediaIoBaseUpload(img, mimetype=img.type, resumable=True)
-        metadata = {'name': img.name, 'parents': [id_carpeta]}
-        servicio.files().create(body=metadata, media_body=media, fields='id').execute()
+        metadata = {"name": img.name, "parents": [id_carpeta]}
+        servicio.files().create(body=metadata, media_body=media, fields="id").execute()
+
 
 class ImagenEnMemoria(io.BytesIO):
     def __init__(self, content, name, mimetype):
@@ -131,22 +244,69 @@ class ImagenEnMemoria(io.BytesIO):
         self.name = name
         self.type = mimetype
 
+
 def descargar_imagenes_de_drive(servicio, id_carpeta):
     query = f"'{id_carpeta}' in parents and trashed=false"
-    resultados = servicio.files().list(q=query, spaces='drive', fields='files(id, name, mimeType)').execute()
-    archivos = resultados.get('files', [])
-    
+    resultados = servicio.files().list(q=query, spaces="drive", fields="files(id, name, mimeType)").execute()
+    archivos = resultados.get("files", [])
+
     imagenes_descargadas = []
     for arch in archivos:
-        request = servicio.files().get_media(fileId=arch['id'])
+        request = servicio.files().get_media(fileId=arch["id"])
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
             status, done = downloader.next_chunk()
         fh.seek(0)
-        imagenes_descargadas.append(ImagenEnMemoria(fh.read(), arch['name'], arch['mimeType']))
+        imagenes_descargadas.append(ImagenEnMemoria(fh.read(), arch["name"], arch["mimeType"]))
     return imagenes_descargadas
+
+
+def obtener_imagenes_finales(servicio_drive, usando_preset, folder_id, imagenes_subidas):
+    """Punto único que decide de dónde vienen las imágenes a publicar/guardar:
+    del preset ya guardado en Drive, o de lo que se acaba de subir a mano.
+    La usan tanto 'Send to Telegram' como 'Save as preset' para no duplicar lógica."""
+    if usando_preset:
+        with st.spinner("Downloading images from cloud..."):
+            imagenes = descargar_imagenes_de_drive(servicio_drive, folder_id)
+            if not imagenes:
+                st.error("Error: The cloud folder is empty. Please clear the preset and re-upload the images manually.")
+                st.stop()
+            return imagenes
+    return imagenes_subidas
+
+
+def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuario, clave, nombre_articulo, precio, links_recopilados, imagenes_finales):
+    """Sube las imágenes a Drive (sustituyendo la carpeta anterior si el preset ya
+    existía con ese nombre) y guarda/actualiza la fila en 'Productos_Guardados'."""
+    nombre_usuario = usuario.get("Nombre", "User")
+    folder_raiz = st.secrets["gdrive"]["folder_id"]
+
+    preset_existente = next(
+        (p for p in presets_usuario if p["datos"]["Nombre_Articulo"].strip().lower() == nombre_articulo.strip().lower()),
+        None,
+    )
+    user_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_usuario, folder_raiz)
+
+    if preset_existente:
+        old_folder_id = preset_existente["datos"].get("ID_Carpeta_Drive")
+        if old_folder_id:
+            borrar_archivo_o_carpeta(servicio_drive, old_folder_id)
+
+    prod_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_articulo, user_folder_id)
+    subir_imagenes_a_drive(servicio_drive, imagenes_finales, prod_folder_id)
+
+    links_json = json.dumps(links_recopilados)
+    guardar_preset_en_sheets(
+        hoja_presets,
+        clave.strip(),
+        nombre_articulo,
+        precio,
+        links_json,
+        prod_folder_id,
+        fila_existente=preset_existente["fila"] if preset_existente else None,
+    )
 
 
 # ------------------------------------------------------------------
@@ -158,6 +318,7 @@ def construir_caption(nombre, precio, links_data):
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
     return texto
+
 
 def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
     try:
@@ -191,15 +352,62 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
 
 
 # ------------------------------------------------------------------
+# LÍMITE DIARIO
+# ------------------------------------------------------------------
+def calcular_estado_uso(usuario):
+    """Calcula cuántos usos 'efectivos' tiene hoy el usuario, teniendo en cuenta que
+    el contador se resetea si la última fecha registrada no es la de hoy."""
+    hoy = date.today()
+    fecha_guardada = None
+    if usuario.get("Ultima_Fecha"):
+        for formato in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"]:
+            try:
+                fecha_guardada = datetime.strptime(str(usuario.get("Ultima_Fecha")).strip(), formato).date()
+                break
+            except ValueError:
+                pass
+    usos_hoy_actual = int(usuario.get("Usos_Hoy") or 0)
+    limite_diario = int(usuario.get("Límite_Diario") or usuario.get("Limite_Diario") or 0)
+    usos_efectivos = 0 if fecha_guardada != hoy else usos_hoy_actual
+    return usos_efectivos, limite_diario, hoy
+
+
+def validar_campos_post(nombre, precio, links, imagenes):
+    faltantes = []
+    if not nombre:
+        faltantes.append("Article Name")
+    if not precio:
+        faltantes.append("Price")
+    if not links:
+        faltantes.append("At least one link")
+    if not imagenes:
+        faltantes.append("At least one image")
+    return faltantes
+
+
+# ------------------------------------------------------------------
+# CABECERA
+# ------------------------------------------------------------------
+st.markdown(
+    """
+    <div class="app-kicker">Internal Tool</div>
+    <div class="app-title">📤 Telegram Post Publisher</div>
+    <div class="app-subtitle">Publish product posts to the channel in a couple of clicks.</div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# ------------------------------------------------------------------
 # UI INITIALIZATION & SESSION STATE
 # ------------------------------------------------------------------
 if "ui_nombre" not in st.session_state:
     st.session_state.ui_nombre = ""
     st.session_state.ui_precio = ""
-    for i in range(1, 6):
+    for i in range(1, MAX_LINKS + 1):
         st.session_state[f"ui_plat_{i}"] = "Select an option..."
         st.session_state[f"ui_url_{i}"] = ""
     st.session_state.ui_folder_id = None
+    st.session_state.num_visible_links = 2  # Empezamos con 2 filas visibles, no 5 -> menos ruido visual
 
 clave = st.text_input("Access Key", type="password", placeholder="Enter your key and press Enter")
 
@@ -211,14 +419,14 @@ if "current_key" not in st.session_state or st.session_state.current_key != clav
         try:
             hoja_auth, hoja_presets = obtener_hojas()
             col_map_auth = obtener_mapa_columnas(hoja_auth)
-            
+
             registros = hoja_auth.get_all_records()
             fila_auth, usuario_auth = None, None
             for i, f in enumerate(registros):
                 if str(f.get("Clave", "")).strip() == clave.strip():
                     fila_auth, usuario_auth = i + 2, f
                     break
-            
+
             st.session_state.current_key = clave
             if usuario_auth is None:
                 st.session_state.is_authenticated = False
@@ -228,15 +436,16 @@ if "current_key" not in st.session_state or st.session_state.current_key != clav
                 st.session_state.row_index = fila_auth
                 st.session_state.col_map = col_map_auth
                 st.session_state.user_presets = obtener_presets(hoja_presets, clave.strip())
-                
+
                 st.session_state.preset_selector = "Create New / Manual"
                 st.session_state.ui_nombre = ""
                 st.session_state.ui_precio = ""
-                for i in range(1, 6):
+                for i in range(1, MAX_LINKS + 1):
                     st.session_state[f"ui_plat_{i}"] = "Select an option..."
                     st.session_state[f"ui_url_{i}"] = ""
                 st.session_state.ui_folder_id = None
-                
+                st.session_state.num_visible_links = 2
+
         except Exception as error:
             st.error(f"Could not connect to Google Cloud: {error}")
             st.stop()
@@ -250,7 +459,9 @@ fila = st.session_state.row_index
 col_map = st.session_state.col_map
 presets_usuario = st.session_state.user_presets
 
-st.success(f"Access granted. Welcome, {usuario.get('Nombre', 'User')}!")
+usos_efectivos_actual, limite_diario_actual, _ = calcular_estado_uso(usuario)
+restantes_hoy = max(limite_diario_actual - usos_efectivos_actual, 0)
+st.success(f"Access granted. Welcome, {usuario.get('Nombre', 'User')}! You have **{restantes_hoy}** post(s) left today.")
 st.divider()
 
 # ------------------------------------------------------------------
@@ -260,37 +471,45 @@ st.subheader("Post Customization")
 
 nombres_presets = ["Create New / Manual"] + [p["datos"]["Nombre_Articulo"] for p in presets_usuario]
 
+
 def apply_preset():
     opcion = st.session_state.preset_selector
     if opcion == "Create New / Manual":
         st.session_state.ui_nombre = ""
         st.session_state.ui_precio = ""
-        for i in range(1, 6):
+        for i in range(1, MAX_LINKS + 1):
             st.session_state[f"ui_plat_{i}"] = "Select an option..."
             st.session_state[f"ui_url_{i}"] = ""
         st.session_state.ui_folder_id = None
+        st.session_state.num_visible_links = 2
     else:
         preset = next(p for p in presets_usuario if p["datos"]["Nombre_Articulo"] == opcion)
         st.session_state.ui_nombre = str(preset["datos"]["Nombre_Articulo"])
         st.session_state.ui_precio = str(preset["datos"]["Precio"])
-        
+
         links_str = preset["datos"].get("Links", "[]")
         links_list = json.loads(links_str) if links_str else []
-        
-        for i in range(1, 6):
+
+        for i in range(1, MAX_LINKS + 1):
             if i <= len(links_list):
-                st.session_state[f"ui_plat_{i}"] = links_list[i-1][0]
-                st.session_state[f"ui_url_{i}"] = links_list[i-1][1]
+                st.session_state[f"ui_plat_{i}"] = links_list[i - 1][0]
+                st.session_state[f"ui_url_{i}"] = links_list[i - 1][1]
             else:
                 st.session_state[f"ui_plat_{i}"] = "Select an option..."
                 st.session_state[f"ui_url_{i}"] = ""
         st.session_state.ui_folder_id = preset["datos"].get("ID_Carpeta_Drive")
+        # Aseguramos que se vean todas las filas que trae el preset, aunque sean más de 2
+        st.session_state.num_visible_links = max(2, len(links_list))
+
 
 st.selectbox("Saved Presets", nombres_presets, key="preset_selector", on_change=apply_preset)
 
+if st.session_state.preset_selector != "Create New / Manual":
+    st.info(f"✏️ Editing preset: **{st.session_state.preset_selector}**")
+
 if st.session_state.ui_folder_id:
-    st.success("✅ Images loaded automatically from your 15GB cloud storage.")
-    imagenes_subidas = [] 
+    st.success("✅ Images loaded automatically from your cloud storage.")
+    imagenes_subidas = []
     usando_preset = True
 else:
     imagenes_subidas = st.file_uploader(
@@ -304,64 +523,69 @@ nombre_articulo = st.text_input("Article Name", key="ui_nombre")
 precio = st.text_input("Price", placeholder="e.g. 19.99", key="ui_precio")
 
 st.markdown("##### Links")
-PLATAFORMAS = ["Select an option...", "USFans", "Hipobuy", "ACBuy", "Litbuy", "Mulebuy", "Hoobuy", "Vigorbuy"]
 links_recopilados = []
 
-for i in range(1, 6):
+for i in range(1, st.session_state.num_visible_links + 1):
     col1, col2 = st.columns([1, 2])
     with col1:
         plat_seleccionada = st.selectbox(f"Platform {i}", PLATAFORMAS, key=f"ui_plat_{i}")
     with col2:
-        esta_bloqueado = (plat_seleccionada == "Select an option...")
+        esta_bloqueado = plat_seleccionada == "Select an option..."
         link_url = st.text_input(f"URL {i}", disabled=esta_bloqueado, key=f"ui_url_{i}")
-        
+
     if not esta_bloqueado and link_url.strip():
         links_recopilados.append((plat_seleccionada, link_url.strip()))
 
+if st.session_state.num_visible_links < MAX_LINKS:
+    if st.button("➕ Add another link"):
+        st.session_state.num_visible_links += 1
+        st.rerun()
+
 st.divider()
 
-guardar_preset = st.checkbox("Save this product as a preset (Overwrites if name already exists)")
-enviado = st.button("Send to Telegram", use_container_width=True, type="primary")
+col_send, col_save = st.columns([2, 1])
+with col_send:
+    enviado = st.button("📨 Send to Telegram", use_container_width=True, type="primary")
+with col_save:
+    guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True)
+
+st.caption("Saving a preset does not publish anything and does not count against your daily limit.")
 
 # ------------------------------------------------------------------
-# SUBMIT LOGIC
+# ACCIÓN: GUARDAR COMO PRESET (independiente del envío a Telegram)
+# ------------------------------------------------------------------
+if guardar_preset_btn:
+    servicio_drive = obtener_servicio_drive()
+    imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
+
+    faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
+    if faltantes:
+        st.warning("Missing fields to save the preset: " + ", ".join(faltantes))
+        st.stop()
+
+    with st.spinner("Saving preset to cloud..."):
+        hoja_auth_p, hoja_presets_p = obtener_hojas()
+        guardar_preset_completo(
+            servicio_drive, hoja_presets_p, presets_usuario, usuario, clave,
+            nombre_articulo, precio, links_recopilados, imagenes_finales,
+        )
+        st.session_state.user_presets = obtener_presets(hoja_presets_p, clave.strip())
+
+    st.success(f"💾 Preset '{nombre_articulo}' saved. It did not count against your daily Telegram limit.")
+
+# ------------------------------------------------------------------
+# ACCIÓN: ENVIAR A TELEGRAM
 # ------------------------------------------------------------------
 if enviado:
     servicio_drive = obtener_servicio_drive()
-    
-    if usando_preset:
-        with st.spinner("Downloading images from cloud..."):
-            imagenes_finales = descargar_imagenes_de_drive(servicio_drive, st.session_state.ui_folder_id)
-            if not imagenes_finales:
-                st.error("Error: The cloud folder is empty. Please clear the preset and re-upload the images manually.")
-                st.stop()
-    else:
-        imagenes_finales = imagenes_subidas
+    imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
 
-    missing_fields = []
-    if not nombre_articulo: missing_fields.append("Article Name")
-    if not precio: missing_fields.append("Price")
-    if not links_recopilados: missing_fields.append("At least one link")
-    if not imagenes_finales: missing_fields.append("At least one image")
-
-    if missing_fields:
-        st.warning("Missing required fields: " + ", ".join(missing_fields))
+    faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
+    if faltantes:
+        st.warning("Missing required fields: " + ", ".join(faltantes))
         st.stop()
 
-    hoy = date.today()
-    fecha_guardada = None
-    if usuario.get("Ultima_Fecha"):
-        for formato in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"]:
-            try:
-                fecha_guardada = datetime.strptime(str(usuario.get("Ultima_Fecha")).strip(), formato).date()
-                break
-            except ValueError:
-                pass
-
-    usos_hoy_actual = int(usuario.get("Usos_Hoy") or 0)
-    limite_diario = int(usuario.get("Límite_Diario") or usuario.get("Limite_Diario") or 0)
-    usos_efectivos = 0 if fecha_guardada != hoy else usos_hoy_actual
-
+    usos_efectivos, limite_diario, hoy = calcular_estado_uso(usuario)
     if usos_efectivos >= limite_diario:
         st.error(f"Daily limit reached ({limite_diario} posts). Please try again tomorrow.")
         st.stop()
@@ -377,37 +601,8 @@ if enviado:
         st.error(f"Error sending to Telegram: {error_msg}")
         st.stop()
 
-    if guardar_preset:
-        with st.spinner("Saving preset to cloud..."):
-            nombre_usuario = usuario.get('Nombre', 'User')
-            folder_raiz = st.secrets["gdrive"]["folder_id"]
-            
-            preset_existente = next((p for p in presets_usuario if p["datos"]["Nombre_Articulo"].strip().lower() == nombre_articulo.strip().lower()), None)
-            user_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_usuario, folder_raiz)
-            
-            if preset_existente:
-                old_folder_id = preset_existente["datos"].get("ID_Carpeta_Drive")
-                if old_folder_id:
-                    borrar_archivo_o_carpeta(servicio_drive, old_folder_id)
-            
-            prod_folder_id = obtener_o_crear_carpeta(servicio_drive, nombre_articulo, user_folder_id)
-            subir_imagenes_a_drive(servicio_drive, imagenes_finales, prod_folder_id)
-            
-            hoja_auth, hoja_presets = obtener_hojas()
-            links_json = json.dumps(links_recopilados)
-            guardar_preset_en_sheets(
-                hoja_presets, 
-                clave.strip(), 
-                nombre_articulo, 
-                precio, 
-                links_json, 
-                prod_folder_id, 
-                fila_existente=preset_existente["fila"] if preset_existente else None
-            )
-            st.session_state.user_presets = obtener_presets(hoja_presets, clave.strip())
-
     try:
-        hoja_auth, _ = obtener_hojas() 
+        hoja_auth, _ = obtener_hojas()
         actualizaciones = [
             {"range": gspread.utils.rowcol_to_a1(fila, col_map["Usos_Hoy"]), "values": [[usos_efectivos + 1]]},
             {"range": gspread.utils.rowcol_to_a1(fila, col_map["Ultima_Fecha"]), "values": [[hoy.strftime("%Y-%m-%d")]]},
@@ -418,4 +613,4 @@ if enviado:
         st.stop()
 
     restantes = limite_diario - (usos_efectivos + 1)
-    st.success(f"Successfully published! You have {restantes} posts left today.")
+    st.success(f"✅ Successfully published! You have {restantes} post(s) left today.")
