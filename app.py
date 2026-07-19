@@ -22,9 +22,6 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ------------------------------------------------------------------
 # PAGE CONFIGURATION & CSS
 # ------------------------------------------------------------------
-# Se calcula ANTES de set_page_config porque leer st.session_state es seguro
-# en cualquier momento (no es una orden de renderizado), y así sabemos ya
-# aquí si toca mostrar la pantalla de acceso o la de trabajo.
 modo_autenticado = st.session_state.get("is_authenticated", False)
 
 st.set_page_config(page_title="Telegram Publisher", layout="wide")
@@ -34,12 +31,10 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Aplicamos la fuente solo a textos estándar para no romper la fuente de iconos (el ojo de visibility) */
     p, h1, h2, h3, h4, h5, h6, span, div, input, button, label {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
     
-    /* Protegemos los iconos de Material para que se alineen bien */
     .stIconMaterial, .material-symbols-rounded {
         font-family: 'Material Symbols Rounded' !important;
     }
@@ -63,7 +58,6 @@ st.markdown(
         to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* Cabecera */
     .app-title {
         font-size: 1.9rem;
         font-weight: 700;
@@ -76,11 +70,6 @@ st.markdown(
         margin-bottom: 2rem;
     }
 
-    /* Botones PRIMARIOS -> Verde Brillante (Verify & Save as preset)
-       NOTA: un st.form_submit_button con type="primary" NO recibe el testid
-       "stBaseButton-primary", sino "stBaseButton-primaryFormSubmit" (lo
-       confirmé inspeccionando el bundle JS de Streamlit). Por eso "Verify"
-       no se pintaba verde: la regla de abajo antes no lo incluía. */
     [data-testid="stBaseButton-primary"],
     [data-testid="stBaseButton-primaryFormSubmit"] {
         background-color: #00E676 !important;
@@ -104,7 +93,6 @@ st.markdown(
         transform: translateY(0);
     }
 
-    /* Botones SECUNDARIOS -> Azul (Send to Telegram) */
     [data-testid="stBaseButton-secondary"],
     [data-testid="stBaseButton-secondaryFormSubmit"] {
         background-color: #7EC8E3 !important;
@@ -124,7 +112,6 @@ st.markdown(
         transform: translateY(-1px);
     }
 
-    /* Inputs de texto */
     [data-testid="stTextInputRootElement"] {
         border-radius: 8px !important;
         transition: box-shadow 0.2s ease, border-color 0.2s ease;
@@ -134,14 +121,10 @@ st.markdown(
         box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
     }
 
-    /* Oculta el aviso "Press Enter to submit form / apply" que Streamlit
-       muestra bajo cualquier input con cambios sin confirmar */
     [data-testid="InputInstructions"] {
         display: none !important;
     }
 
-    /* Símbolo "$" fijado dentro del campo Precio: mismo tamaño de letra que
-       el texto del input y perfectamente centrado en vertical */
     div[data-testid="stTextInputRootElement"]:has(input[aria-label="Price"]) {
         position: relative;
     }
@@ -161,11 +144,6 @@ st.markdown(
         pointer-events: none;
     }
 
-    /* Zona de subida de imágenes.
-       OJO: el testid real es "stFileUploaderDropzone" (con "er"), no
-       "stFileUploadDropzone". Con el nombre equivocado ninguna de estas
-       reglas llegaba a aplicarse antes. Mantenemos visible el texto de
-       ayuda (ahora mostrará correctamente "Limit 10MB per file"). */
     [data-testid="stFileUploaderDropzone"] {
         background-color: #FAFBFC;
         border: 2px dashed #CBD5DA;
@@ -181,15 +159,11 @@ st.markdown(
         color: #7EC8E3 !important;
     }
 
-    /* Alertas */
     [data-testid="stAlertContainer"] {
         border-radius: 10px;
         animation: fadeInUp 0.3s ease;
     }
 
-    /* Panel de previsualización: se queda fijo en pantalla mientras el
-       usuario hace scroll por el formulario de la derecha. st.container(key=)
-       expone la clase CSS "st-key-<key>", por eso podemos apuntarle aquí. */
     .st-key-preview_panel {
         position: sticky;
         top: 6rem;
@@ -209,8 +183,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Ancho máximo de la tarjeta principal: estrecho para la pantalla de acceso,
-# más ancho para dar hueco a las dos columnas (preview + formulario).
 _ancho_maximo = "1300px" if modo_autenticado else "760px"
 st.markdown(
     f"""
@@ -258,7 +230,6 @@ def obtener_mapa_columnas(hoja):
     encabezados = hoja.row_values(1)
     return {nombre.strip(): idx + 1 for idx, nombre in enumerate(encabezados)}
 
-# --- LOGICA DE PRESETS EN SHEETS ---
 def obtener_presets(hoja_presets, clave):
     registros = hoja_presets.get_all_records()
     presets = []
@@ -273,7 +244,6 @@ def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id
     else:
         hoja_presets.append_row([clave, nombre, precio, links_json, id_carpeta])
 
-# --- LOGICA DE GOOGLE DRIVE ---
 def obtener_o_crear_carpeta(servicio, nombre, id_padre):
     if not id_padre:
         st.error("El ID de la carpeta raíz (folder_id) está vacío en los Secrets.")
@@ -369,12 +339,10 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
         fila_existente=preset_existente["fila"] if preset_existente else None,
     )
 
-
 # ------------------------------------------------------------------
 # TELEGRAM LOGIC
 # ------------------------------------------------------------------
 def construir_caption(nombre, precio, links_data):
-    # Añadimos el $ al enviarlo por si se le olvida al usuario
     precio_str = str(precio).strip()
     if precio_str and not precio_str.endswith('$'):
         precio_str += '$'
@@ -416,7 +384,6 @@ def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
     except requests.exceptions.RequestException as error:
         return False, f"Connection error with Telegram: {error}"
 
-
 # ------------------------------------------------------------------
 # LÍMITE DIARIO
 # ------------------------------------------------------------------
@@ -447,7 +414,6 @@ def validar_campos_post(nombre, precio, links, imagenes):
         faltantes.append("At least one image")
     return faltantes
 
-
 # ------------------------------------------------------------------
 # CABECERA
 # ------------------------------------------------------------------
@@ -472,7 +438,7 @@ if "ui_nombre" not in st.session_state:
     st.session_state.num_visible_links = 2
 
 # ------------------------------------------------------------------
-# PANTALLA 1: ACCESO (independiente de Post Customization).
+# PANTALLA 1: ACCESO
 # ------------------------------------------------------------------
 if not modo_autenticado:
     st.markdown(
@@ -525,9 +491,7 @@ if not modo_autenticado:
                         st.session_state[f"ui_url_{i}"] = ""
                     st.session_state.ui_folder_id = None
                     st.session_state.num_visible_links = 2
-
                     st.rerun()
-
             except Exception as error:
                 st.error(f"Could not connect to Google Cloud: {error}")
 
@@ -548,10 +512,9 @@ st.success(f"Access granted. Welcome, {usuario.get('Nombre', 'User')}! You have 
 st.divider()
 
 # ------------------------------------------------------------------
-# MAIN FORM UI (formulario a la derecha + preview fijo a la izquierda)
+# MAIN FORM UI
 # ------------------------------------------------------------------
 nombres_presets = ["Create New / Manual"] + [p["datos"]["Nombre_Articulo"] for p in presets_usuario]
-
 
 def apply_preset():
     opcion = st.session_state.preset_selector
@@ -580,7 +543,6 @@ def apply_preset():
                 st.session_state[f"ui_url_{i}"] = ""
         st.session_state.ui_folder_id = preset["datos"].get("ID_Carpeta_Drive")
         st.session_state.num_visible_links = max(2, len(links_list))
-
 
 col_preview, col_form = st.columns([1, 1.5], gap="large")
 
@@ -712,20 +674,15 @@ with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        # 1. Cargar el template original buscando en la ruta absoluta del servidor
+        # 1. Cargar el template original (Ruta limpia y directa)
         template_b64 = ""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        template_path = os.path.join(base_dir, "Template.png")
+        template_path = os.path.join(os.path.dirname(__file__), "Template.png")
         
         if os.path.exists(template_path):
             with open(template_path, "rb") as f:
                 template_b64 = base64.b64encode(f.read()).decode()
-        elif os.path.exists("Template.png"):
-            # Salvavidas por si se ejecuta desde otra carpeta raíz
-            with open("Template.png", "rb") as f:
-                template_b64 = base64.b64encode(f.read()).decode()
 
-        # 2. Renderizar el HTML de las imágenes (todo en una sola línea para evitar parseos raros de Streamlit)
+        # 2. Renderizar el HTML de las imágenes
         html_images = ""
         if usando_preset:
             html_images = '<div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;"><span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span></div>'
@@ -754,7 +711,8 @@ with col_preview:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
 
         # 4. Construcción del entorno HTML/CSS Superpuesto
-        # ¡ATENCIÓN! No hay espacios a la izquierda de las etiquetas HTML para que Streamlit no lo convierta en código
+        # ATENCIÓN: El código HTML de abajo está deliberadamente PEGADO al borde izquierdo
+        # sin espacios. Si se añaden espacios, Streamlit lo procesa como código crudo.
         bg_style = f"background-image: url('data:image/png;base64,{template_b64}');" if template_b64 else "background-color: #E4E9EC;"
         
         preview_html = f"""<style>
@@ -811,12 +769,12 @@ with col_preview:
 }}
 </style>
 <div class="iphone-preview">
-    <div class="telegram-message">
-        {html_images}
-        <div class="telegram-text">
-            {caption_html}
-        </div>
-    </div>
+<div class="telegram-message">
+{html_images}
+<div class="telegram-text">
+{caption_html}
+</div>
+</div>
 </div>"""
         
         st.markdown(preview_html, unsafe_allow_html=True)
