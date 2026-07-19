@@ -674,15 +674,15 @@ with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        # 1. Cargar el template original (Ruta limpia y directa)
+        # 1. Cargar el template tal y como aconseja Claude (abriendo el archivo directamente)
         template_b64 = ""
-        template_path = os.path.join(os.path.dirname(__file__), "Template.png")
-        
-        if os.path.exists(template_path):
-            with open(template_path, "rb") as f:
+        try:
+            with open("Template.png", "rb") as f:
                 template_b64 = base64.b64encode(f.read()).decode()
+        except FileNotFoundError:
+            st.error("⚠️ ERROR: No se encuentra 'Template.png' en el servidor. Verifica que lo subiste a GitHub con ese nombre exacto.")
 
-        # 2. Renderizar el HTML de las imágenes
+        # 2. Renderizar las imágenes de la burbuja en HTML puro
         html_images = ""
         if usando_preset:
             html_images = '<div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;"><span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span></div>'
@@ -703,7 +703,7 @@ with col_preview:
             if len(imagenes_subidas) > 3:
                 html_images += f'<div style="font-size: 0.75rem; color: #7C8A94; text-align: center; margin-bottom: 6px;">+{len(imagenes_subidas)-3} more image(s)</div>'
 
-        # 3. Procesar el texto de previsualización
+        # 3. Procesar el texto
         if nombre_articulo or precio or links_recopilados:
             caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados)
             caption_html = caption_preview.replace("\n", "<br>")
@@ -711,70 +711,67 @@ with col_preview:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
 
         # 4. Construcción del entorno HTML/CSS Superpuesto
-        # ATENCIÓN: El código HTML de abajo está deliberadamente PEGADO al borde izquierdo
-        # sin espacios. Si se añaden espacios, Streamlit lo procesa como código crudo.
         bg_style = f"background-image: url('data:image/png;base64,{template_b64}');" if template_b64 else "background-color: #E4E9EC;"
         
-        preview_html = f"""<style>
-.iphone-preview {{
-    position: relative;
-    width: 100%;
-    max-width: 360px; 
-    aspect-ratio: 1712 / 3504;
-    margin: 0 auto;
-    {bg_style}
-    background-size: cover;
-    background-position: center;
-    border-radius: 38px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end; 
-    padding: 0 7% 14% 7%; 
-}}
-.telegram-message {{
-    background-color: #FFFFFF;
-    border-radius: 16px 16px 16px 4px;
-    padding: 4px;
-    max-width: 90%;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    color: #000;
-}}
-.telegram-images {{
-    display: grid;
-    gap: 2px;
-    border-radius: 12px;
-    overflow: hidden;
-    margin-bottom: 6px;
-}}
-.grid-1 {{ grid-template-columns: 1fr; }}
-.grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
-.grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
-.grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
-.telegram-images img {{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}}
-.telegram-text {{
-    padding: 4px 8px 8px 8px;
-    font-size: 0.88rem;
-    line-height: 1.45;
-}}
-.telegram-text a {{
-    color: #2481cc;
-    text-decoration: none;
-}}
-</style>
-<div class="iphone-preview">
-<div class="telegram-message">
-{html_images}
-<div class="telegram-text">
-{caption_html}
-</div>
-</div>
-</div>"""
+        # ATENCIÓN: El string de CSS se cierra de forma normal, y la parte de los '<div>' se empalma
+        # completamente compactada (sin saltos de línea ni espacios) para anular el bug de Markdown de Streamlit
+        css_bloque = f"""
+        <style>
+        .iphone-preview {{
+            position: relative;
+            width: 100%;
+            max-width: 360px; 
+            aspect-ratio: 1712 / 3504;
+            margin: 0 auto;
+            {bg_style}
+            background-size: cover;
+            background-position: center;
+            border-radius: 38px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; 
+            padding: 0 7% 14% 7%; 
+        }}
+        .telegram-message {{
+            background-color: #FFFFFF;
+            border-radius: 16px 16px 16px 4px;
+            padding: 4px;
+            max-width: 90%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #000;
+        }}
+        .telegram-images {{
+            display: grid;
+            gap: 2px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }}
+        .grid-1 {{ grid-template-columns: 1fr; }}
+        .grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
+        .grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
+        .grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
+        .telegram-images img {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }}
+        .telegram-text {{
+            padding: 4px 8px 8px 8px;
+            font-size: 0.88rem;
+            line-height: 1.45;
+        }}
+        .telegram-text a {{
+            color: #2481cc;
+            text-decoration: none;
+        }}
+        </style>
+        """
+
+        # Inyectamos todo el HTML seguido en una sola línea para que sea imposible que falle el renderizado
+        html_bloque = f'<div class="iphone-preview"><div class="telegram-message">{html_images}<div class="telegram-text">{caption_html}</div></div></div>'
         
-        st.markdown(preview_html, unsafe_allow_html=True)
+        st.markdown(css_bloque + html_bloque, unsafe_allow_html=True)
