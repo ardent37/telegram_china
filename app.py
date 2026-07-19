@@ -673,10 +673,10 @@ with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        # 1. Renderizar las imágenes de la burbuja (Base64)
+        # 1. Renderizar las imágenes de la burbuja (Base64) usando medidas relativas CQI
         html_images = ""
         if usando_preset:
-            html_images = '<div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;"><span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span></div>'
+            html_images = '<div style="background-color: #E4E9EC; height: 33cqi; border-radius: 2.2cqi; display: flex; align-items: center; justify-content: center; margin-bottom: 2.2cqi;"><span style="color: #8C9CA6; font-weight: 500; font-size: 3.3cqi;">🖼️ Preset Images</span></div>'
         elif imagenes_subidas:
             imgs_b64 = []
             for img in imagenes_subidas[:3]:
@@ -692,7 +692,7 @@ with col_preview:
             html_images += '</div>'
             
             if len(imagenes_subidas) > 3:
-                html_images += f'<div style="font-size: 0.75rem; color: #7C8A94; text-align: center; margin-bottom: 6px;">+{len(imagenes_subidas)-3} more image(s)</div>'
+                html_images += f'<div style="font-size: 3.3cqi; color: #7C8A94; text-align: center; margin-bottom: 1.6cqi;">+{len(imagenes_subidas)-3} more image(s)</div>'
 
         # 2. Procesar el texto
         if nombre_articulo or precio or links_recopilados:
@@ -704,6 +704,8 @@ with col_preview:
         # 3. Construcción del entorno HTML/CSS Superpuesto
         bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
+        # ATENCIÓN: Todos los valores fijos (px, rem) se han cambiado por `cqi` (Container Query Inline)
+        # para que se escalen matemáticamente en función del ancho de la imagen principal.
         css_bloque = f"""
         <style>
         .iphone-preview {{
@@ -715,19 +717,19 @@ with col_preview:
             {bg_style}
             background-size: cover;
             background-position: center;
-            border-radius: 38px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
+            border-radius: 10.5cqi;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 1.6cqi #000;
             overflow: hidden;
             display: flex;
             flex-direction: column;
             justify-content: flex-end; 
-            /* Se ha ajustado el padding con porcentajes para que la posición sea relativa y escalable */
-            padding: 0 7% 16% 5.5%; 
+            padding: 0 7% 17% 3%; 
+            container-type: inline-size;
         }}
         .telegram-message {{
             background-color: #FFFFFF;
-            border-radius: 16px 16px 16px 4px;
-            padding: 4px;
+            border-radius: 4.5cqi 4.5cqi 4.5cqi 1cqi;
+            padding: 1.1cqi;
             max-width: 90%;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -735,14 +737,14 @@ with col_preview:
         }}
         .telegram-images {{
             display: grid;
-            gap: 2px;
-            border-radius: 12px;
+            gap: 0.5cqi;
+            border-radius: 3.3cqi;
             overflow: hidden;
-            margin-bottom: 6px;
+            margin-bottom: 1.6cqi;
         }}
         .grid-1 {{ grid-template-columns: 1fr; }}
-        .grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
-        .grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
+        .grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 41cqi; }}
+        .grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 22cqi 22cqi; }}
         .grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
         .telegram-images img {{
             width: 100%;
@@ -750,8 +752,8 @@ with col_preview:
             object-fit: cover;
         }}
         .telegram-text {{
-            padding: 4px 8px 8px 8px;
-            font-size: 0.88rem;
+            padding: 1.1cqi 2.2cqi 2.2cqi 2.2cqi;
+            font-size: 3.8cqi;
             line-height: 1.45;
         }}
         .telegram-text a {{
