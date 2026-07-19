@@ -20,7 +20,12 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ------------------------------------------------------------------
 # PAGE CONFIGURATION & CSS
 # ------------------------------------------------------------------
-st.set_page_config(page_title="Telegram Publisher", layout="centered")
+# Se calcula ANTES de set_page_config porque leer st.session_state es seguro
+# en cualquier momento (no es una orden de renderizado), y así sabemos ya
+# aquí si toca mostrar la pantalla de acceso o la de trabajo.
+modo_autenticado = st.session_state.get("is_authenticated", False)
+
+st.set_page_config(page_title="Telegram Publisher", layout="wide")
 
 st.markdown(
     """
@@ -179,6 +184,58 @@ st.markdown(
         border-radius: 10px;
         animation: fadeInUp 0.3s ease;
     }
+
+    /* Panel de previsualización: se queda fijo en pantalla mientras el
+       usuario hace scroll por el formulario de la derecha. st.container(key=)
+       expone la clase CSS "st-key-<key>", por eso podemos apuntarle aquí. */
+    .st-key-preview_panel {
+        position: sticky;
+        top: 6rem;
+        align-self: flex-start;
+    }
+
+    .tg-panel-label {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #7C8A94;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+    }
+
+    /* "Burbuja" que imita el mensaje final que llegará al canal */
+    .tg-bubble {
+        background-color: #F7F9FA;
+        border: 1px solid #E3E8EB;
+        border-radius: 14px;
+        padding: 1rem 1.15rem;
+        font-size: 0.92rem;
+        line-height: 1.6;
+        color: #16232D;
+        white-space: normal;
+    }
+    .tg-bubble a {
+        color: #2C7DA0;
+        text-decoration: none;
+        font-weight: 600;
+    }
+    .tg-bubble a:hover {
+        text-decoration: underline;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Ancho máximo de la tarjeta principal: estrecho para la pantalla de acceso,
+# más ancho para dar hueco a las dos columnas (preview + formulario).
+_ancho_maximo = "1300px" if modo_autenticado else "760px"
+st.markdown(
+    f"""
+    <style>
+    [data-testid="stMainBlockContainer"] {{
+        max-width: {_ancho_maximo} !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -432,71 +489,82 @@ if "ui_nombre" not in st.session_state:
     st.session_state.ui_folder_id = None
     st.session_state.num_visible_links = 2
 
-# Usamos un form interno para forzar la necesidad de dar al botón (o al Enter explícito)
-# y así bloquear el mensaje de "Press enter to apply" y el refresco automático de Streamlit.
-if "input_key" not in st.session_state:
-    st.session_state.input_key = ""
+# ------------------------------------------------------------------
+# PANTALLA 1: ACCESO (independiente de Post Customization).
+# Solo se dibuja mientras el usuario no esté autenticado; en cuanto la
+# clave es válida, hacemos st.rerun() y esta pantalla deja de existir
+# por completo, sin dejar el cuadro de texto visible en ningún sitio.
+# ------------------------------------------------------------------
+if not modo_autenticado:
+    st.markdown(
+        "<h4 style='font-size: 1.05rem; color: #16232D; margin-bottom: 0.2rem;'>"
+        "Please enter your access key provided by the owner.</h4>",
+        unsafe_allow_html=True,
+    )
+    with st.form("auth_form", border=False):
+        col_key, col_btn = st.columns([4, 1], vertical_alignment="bottom")
+        with col_key:
+            clave_input = st.text_input(
+                "Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed"
+            )
+        with col_btn:
+            verify_pressed = st.form_submit_button("Verify", type="primary", use_container_width=True)
 
-with st.form("auth_form", border=False):
-    st.markdown("<h4 style='font-size: 1.05rem; color: #16232D; margin-bottom: 0.2rem;'>Security</h4>", unsafe_allow_html=True)
-    col_key, col_btn = st.columns([4, 1], vertical_alignment="bottom")
-    with col_key:
-        clave_input = st.text_input("Access Key", type="password", placeholder="Enter your key", label_visibility="collapsed")
-    with col_btn:
-        verify_pressed = st.form_submit_button("Verify", type="primary", use_container_width=True)
-
-if verify_pressed:
-    st.session_state.input_key = clave_input
-
-clave = st.session_state.input_key
-
-if not clave:
-    st.stop()
-
-if "current_key" not in st.session_state or st.session_state.current_key != clave:
-    with st.spinner("Verifying access key & fetching database..."):
-        try:
-            hoja_auth, hoja_presets = obtener_hojas()
-            col_map_auth = obtener_mapa_columnas(hoja_auth)
-
-            registros = hoja_auth.get_all_records()
-            fila_auth, usuario_auth = None, None
-            for i, f in enumerate(registros):
-                if str(f.get("Clave", "")).strip() == clave.strip():
-                    fila_auth, usuario_auth = i + 2, f
-                    break
-
-            st.session_state.current_key = clave
-            if usuario_auth is None:
-                st.session_state.is_authenticated = False
-            else:
-                st.session_state.is_authenticated = True
-                st.session_state.user_data = usuario_auth
-                st.session_state.row_index = fila_auth
-                st.session_state.col_map = col_map_auth
-                st.session_state.user_presets = obtener_presets(hoja_presets, clave.strip())
-
-                st.session_state.preset_selector = "Create New / Manual"
-                st.session_state.ui_nombre = ""
-                st.session_state.ui_precio = ""
-                for i in range(1, MAX_LINKS + 1):
-                    st.session_state[f"ui_plat_{i}"] = "Select an option..."
-                    st.session_state[f"ui_url_{i}"] = ""
-                st.session_state.ui_folder_id = None
-                st.session_state.num_visible_links = 2
-
-        except Exception as error:
-            st.error(f"Could not connect to Google Cloud: {error}")
+    if verify_pressed:
+        clave_intentada = clave_input.strip()
+        if not clave_intentada:
+            st.warning("Please enter an access key.")
             st.stop()
 
-if not st.session_state.get("is_authenticated"):
-    st.error("Invalid access key. Please try again.")
+        with st.spinner("Verifying access key & fetching database..."):
+            try:
+                hoja_auth, hoja_presets = obtener_hojas()
+                col_map_auth = obtener_mapa_columnas(hoja_auth)
+
+                registros = hoja_auth.get_all_records()
+                fila_auth, usuario_auth = None, None
+                for i, f in enumerate(registros):
+                    if str(f.get("Clave", "")).strip() == clave_intentada:
+                        fila_auth, usuario_auth = i + 2, f
+                        break
+
+                if usuario_auth is None:
+                    st.error("Invalid access key. Please try again.")
+                else:
+                    st.session_state.is_authenticated = True
+                    st.session_state.current_key = clave_intentada
+                    st.session_state.user_data = usuario_auth
+                    st.session_state.row_index = fila_auth
+                    st.session_state.col_map = col_map_auth
+                    st.session_state.user_presets = obtener_presets(hoja_presets, clave_intentada)
+
+                    st.session_state.preset_selector = "Create New / Manual"
+                    st.session_state.ui_nombre = ""
+                    st.session_state.ui_precio = ""
+                    for i in range(1, MAX_LINKS + 1):
+                        st.session_state[f"ui_plat_{i}"] = "Select an option..."
+                        st.session_state[f"ui_url_{i}"] = ""
+                    st.session_state.ui_folder_id = None
+                    st.session_state.num_visible_links = 2
+
+                    # Reinicio limpio: la próxima ejecución del script ya
+                    # entra directamente en la pantalla de trabajo, sin
+                    # ningún resto de la pantalla de acceso.
+                    st.rerun()
+
+            except Exception as error:
+                st.error(f"Could not connect to Google Cloud: {error}")
+
     st.stop()
 
+# ------------------------------------------------------------------
+# A partir de aquí, is_authenticated es garantizado True.
+# ------------------------------------------------------------------
 usuario = st.session_state.user_data
 fila = st.session_state.row_index
 col_map = st.session_state.col_map
 presets_usuario = st.session_state.user_presets
+clave = st.session_state.current_key
 
 usos_efectivos_actual, limite_diario_actual, _ = calcular_estado_uso(usuario)
 restantes_hoy = max(limite_diario_actual - usos_efectivos_actual, 0)
@@ -504,11 +572,10 @@ st.success(f"Access granted. Welcome, {usuario.get('Nombre', 'User')}! You have 
 st.divider()
 
 # ------------------------------------------------------------------
-# MAIN FORM UI
+# MAIN FORM UI (formulario a la derecha + preview fijo a la izquierda)
 # ------------------------------------------------------------------
-st.subheader("Post Customization")
-
 nombres_presets = ["Create New / Manual"] + [p["datos"]["Nombre_Articulo"] for p in presets_usuario]
+
 
 def apply_preset():
     opcion = st.session_state.preset_selector
@@ -539,134 +606,176 @@ def apply_preset():
         st.session_state.num_visible_links = max(2, len(links_list))
 
 
-st.selectbox("Saved Presets", nombres_presets, key="preset_selector", on_change=apply_preset)
+# Creamos las dos columnas primero. El orden en que se rellenan más abajo
+# (formulario antes que preview, en el código) no importa: cada "with"
+# escribe en la columna visual que le corresponde, no en la que toque
+# según el orden del código.
+col_preview, col_form = st.columns([1, 1.5], gap="large")
 
-if st.session_state.ui_folder_id:
-    st.success("✅ Images loaded automatically from your cloud storage.")
-    imagenes_subidas = []
-    usando_preset = True
-else:
-    try:
-        # max_upload_size es un parámetro reciente de Streamlit (por-widget).
-        # Si la versión desplegada en Streamlit Cloud fuera más antigua y no
-        # lo soportara, caemos al uploader normal sin romper la app.
-        imagenes_subidas = st.file_uploader(
-            "Product Images",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            max_upload_size=10,  # MB por archivo
-        )
-    except TypeError:
-        imagenes_subidas = st.file_uploader(
-            "Product Images",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-        )
-    usando_preset = False
+with col_form:
+    st.subheader("Post Customization")
 
-    # Salvaguarda extra por si la versión de Streamlit desplegada no soporta
-    # max_upload_size (versiones antiguas): igualmente bloqueamos aquí.
-    if imagenes_subidas:
-        archivos_grandes = [f.name for f in imagenes_subidas if f.size > 10 * 1024 * 1024]
-        if archivos_grandes:
-            st.error("These files exceed the 10MB limit: " + ", ".join(archivos_grandes))
+    st.selectbox("Saved Presets", nombres_presets, key="preset_selector", on_change=apply_preset)
+
+    if st.session_state.ui_folder_id:
+        st.success("✅ Images loaded automatically from your cloud storage.")
+        imagenes_subidas = []
+        usando_preset = True
+    else:
+        try:
+            # max_upload_size es un parámetro reciente de Streamlit (por-widget).
+            # Si la versión desplegada en Streamlit Cloud fuera más antigua y no
+            # lo soportara, caemos al uploader normal sin romper la app.
+            imagenes_subidas = st.file_uploader(
+                "Product Images",
+                type=["png", "jpg", "jpeg"],
+                accept_multiple_files=True,
+                max_upload_size=10,  # MB por archivo
+            )
+        except TypeError:
+            imagenes_subidas = st.file_uploader(
+                "Product Images",
+                type=["png", "jpg", "jpeg"],
+                accept_multiple_files=True,
+            )
+        usando_preset = False
+
+        # Salvaguarda extra por si la versión de Streamlit desplegada no soporta
+        # max_upload_size (versiones antiguas): igualmente bloqueamos aquí.
+        if imagenes_subidas:
+            archivos_grandes = [f.name for f in imagenes_subidas if f.size > 10 * 1024 * 1024]
+            if archivos_grandes:
+                st.error("These files exceed the 10MB limit: " + ", ".join(archivos_grandes))
+                st.stop()
+
+    nombre_articulo = st.text_input("Article Name", key="ui_nombre")
+    precio = st.text_input("Price", placeholder="19.99", key="ui_precio")
+
+    st.markdown("##### Links")
+    links_recopilados = []
+
+    for i in range(1, st.session_state.num_visible_links + 1):
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            plat_seleccionada = st.selectbox(f"Platform {i}", PLATAFORMAS, key=f"ui_plat_{i}")
+        with col2:
+            esta_bloqueado = plat_seleccionada == "Select an option..."
+            link_url = st.text_input(f"URL {i}", disabled=esta_bloqueado, key=f"ui_url_{i}")
+
+        if not esta_bloqueado and link_url.strip():
+            links_recopilados.append((plat_seleccionada, link_url.strip()))
+
+    if st.session_state.num_visible_links < MAX_LINKS:
+        if st.button("➕ Add another link", type="tertiary"):
+            st.session_state.num_visible_links += 1
+            st.rerun()
+
+    st.divider()
+
+    col_send, col_save = st.columns([2, 1])
+    with col_send:
+        # Este botón es secundario en el CSS (Azul)
+        enviado = st.button("📨 Send to Telegram", use_container_width=True, type="secondary")
+    with col_save:
+        # Este botón es primario en el CSS (Verde brillante)
+        guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True, type="primary")
+
+    st.caption("Saving a preset does not publish anything and does not count against your daily limit.")
+
+    # --------------------------------------------------------------
+    # ACCIÓN: GUARDAR COMO PRESET (independiente del envío a Telegram)
+    # --------------------------------------------------------------
+    if guardar_preset_btn:
+        servicio_drive = obtener_servicio_drive()
+        imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
+
+        faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
+        if faltantes:
+            st.warning("Missing fields to save the preset: " + ", ".join(faltantes))
             st.stop()
 
-nombre_articulo = st.text_input("Article Name", key="ui_nombre")
-precio = st.text_input("Price", placeholder="19.99", key="ui_precio")
+        with st.spinner("Saving preset to cloud..."):
+            hoja_auth_p, hoja_presets_p = obtener_hojas()
+            guardar_preset_completo(
+                servicio_drive, hoja_presets_p, presets_usuario, usuario, clave,
+                nombre_articulo, precio, links_recopilados, imagenes_finales,
+            )
+            st.session_state.user_presets = obtener_presets(hoja_presets_p, clave.strip())
 
+        st.success(f"💾 Preset '{nombre_articulo}' saved. It did not count against your daily Telegram limit.")
 
-st.markdown("##### Links")
-links_recopilados = []
+    # --------------------------------------------------------------
+    # ACCIÓN: ENVIAR A TELEGRAM
+    # --------------------------------------------------------------
+    if enviado:
+        servicio_drive = obtener_servicio_drive()
+        imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
 
-for i in range(1, st.session_state.num_visible_links + 1):
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        plat_seleccionada = st.selectbox(f"Platform {i}", PLATAFORMAS, key=f"ui_plat_{i}")
-    with col2:
-        esta_bloqueado = plat_seleccionada == "Select an option..."
-        link_url = st.text_input(f"URL {i}", disabled=esta_bloqueado, key=f"ui_url_{i}")
+        faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
+        if faltantes:
+            st.warning("Missing required fields: " + ", ".join(faltantes))
+            st.stop()
 
-    if not esta_bloqueado and link_url.strip():
-        links_recopilados.append((plat_seleccionada, link_url.strip()))
+        usos_efectivos, limite_diario, hoy = calcular_estado_uso(usuario)
+        if usos_efectivos >= limite_diario:
+            st.error(f"Daily limit reached ({limite_diario} posts). Please try again tomorrow.")
+            st.stop()
 
-if st.session_state.num_visible_links < MAX_LINKS:
-    if st.button("➕ Add another link", type="tertiary"):
-        st.session_state.num_visible_links += 1
-        st.rerun()
+        caption = construir_caption(nombre_articulo, precio, links_recopilados)
 
-st.divider()
+        with st.spinner("Publishing to Telegram..."):
+            bot_token = st.secrets["telegram"]["bot_token"]
+            channel_id = st.secrets["telegram"]["channel_id"]
+            exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes_finales)
 
-col_send, col_save = st.columns([2, 1])
-with col_send:
-    # Este botón es secundario en el CSS (Azul)
-    enviado = st.button("📨 Send to Telegram", use_container_width=True, type="secondary")
-with col_save:
-    # Este botón es primario en el CSS (Verde brillante)
-    guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True, type="primary")
+        if not exito:
+            st.error(f"Error sending to Telegram: {error_msg}")
+            st.stop()
 
-st.caption("Saving a preset does not publish anything and does not count against your daily limit.")
+        try:
+            hoja_auth, _ = obtener_hojas()
+            actualizaciones = [
+                {"range": gspread.utils.rowcol_to_a1(fila, col_map["Usos_Hoy"]), "values": [[usos_efectivos + 1]]},
+                {"range": gspread.utils.rowcol_to_a1(fila, col_map["Ultima_Fecha"]), "values": [[hoy.strftime("%Y-%m-%d")]]},
+            ]
+            hoja_auth.batch_update(actualizaciones)
+        except Exception as error:
+            st.warning(f"Published to Telegram, but could not update the limit counter in Sheets: {error}")
+            st.stop()
 
-# ------------------------------------------------------------------
-# ACCIÓN: GUARDAR COMO PRESET (independiente del envío a Telegram)
-# ------------------------------------------------------------------
-if guardar_preset_btn:
-    servicio_drive = obtener_servicio_drive()
-    imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
-
-    faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
-    if faltantes:
-        st.warning("Missing fields to save the preset: " + ", ".join(faltantes))
-        st.stop()
-
-    with st.spinner("Saving preset to cloud..."):
-        hoja_auth_p, hoja_presets_p = obtener_hojas()
-        guardar_preset_completo(
-            servicio_drive, hoja_presets_p, presets_usuario, usuario, clave,
-            nombre_articulo, precio, links_recopilados, imagenes_finales,
-        )
-        st.session_state.user_presets = obtener_presets(hoja_presets_p, clave.strip())
-
-    st.success(f"💾 Preset '{nombre_articulo}' saved. It did not count against your daily Telegram limit.")
+        restantes = limite_diario - (usos_efectivos + 1)
+        st.success(f"✅ Successfully published! You have {restantes} post(s) left today.")
 
 # ------------------------------------------------------------------
-# ACCIÓN: ENVIAR A TELEGRAM
+# PREVIEW PANEL (columna izquierda, fija en pantalla).
+# Se escribe DESPUÉS de col_form en el código para poder usar las
+# variables ya calculadas (nombre_articulo, precio, links_recopilados...),
+# pero al usar "with col_preview:" Streamlit lo sigue colocando en la
+# columna visual de la izquierda, no donde aparece en el código.
 # ------------------------------------------------------------------
-if enviado:
-    servicio_drive = obtener_servicio_drive()
-    imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
+with col_preview:
+    with st.container(key="preview_panel"):
+        st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-    faltantes = validar_campos_post(nombre_articulo, precio, links_recopilados, imagenes_finales)
-    if faltantes:
-        st.warning("Missing required fields: " + ", ".join(faltantes))
-        st.stop()
+        if usando_preset:
+            st.caption("🖼️ Images will be loaded from your saved preset when you publish.")
+        elif imagenes_subidas:
+            miniaturas = imagenes_subidas[:3]
+            cols_thumb = st.columns(len(miniaturas))
+            for col_thumb, img in zip(cols_thumb, miniaturas):
+                with col_thumb:
+                    st.image(img, width="stretch")
+            if len(imagenes_subidas) > 3:
+                st.caption(f"+{len(imagenes_subidas) - 3} more image(s)")
+        else:
+            st.caption("No images added yet.")
 
-    usos_efectivos, limite_diario, hoy = calcular_estado_uso(usuario)
-    if usos_efectivos >= limite_diario:
-        st.error(f"Daily limit reached ({limite_diario} posts). Please try again tomorrow.")
-        st.stop()
-
-    caption = construir_caption(nombre_articulo, precio, links_recopilados)
-
-    with st.spinner("Publishing to Telegram..."):
-        bot_token = st.secrets["telegram"]["bot_token"]
-        channel_id = st.secrets["telegram"]["channel_id"]
-        exito, error_msg = enviar_a_telegram(bot_token, channel_id, caption, imagenes_finales)
-
-    if not exito:
-        st.error(f"Error sending to Telegram: {error_msg}")
-        st.stop()
-
-    try:
-        hoja_auth, _ = obtener_hojas()
-        actualizaciones = [
-            {"range": gspread.utils.rowcol_to_a1(fila, col_map["Usos_Hoy"]), "values": [[usos_efectivos + 1]]},
-            {"range": gspread.utils.rowcol_to_a1(fila, col_map["Ultima_Fecha"]), "values": [[hoy.strftime("%Y-%m-%d")]]},
-        ]
-        hoja_auth.batch_update(actualizaciones)
-    except Exception as error:
-        st.warning(f"Published to Telegram, but could not update the limit counter in Sheets: {error}")
-        st.stop()
-
-    restantes = limite_diario - (usos_efectivos + 1)
-    st.success(f"✅ Successfully published! You have {restantes} post(s) left today.")
+        if nombre_articulo or precio or links_recopilados:
+            caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados)
+            caption_html = caption_preview.replace("\n", "<br>")
+            st.markdown(f'<div class="tg-bubble">{caption_html}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(
+                '<div class="tg-bubble" style="color:#9AA7AE;">Fill in the form to see a preview…</div>',
+                unsafe_allow_html=True,
+            )
