@@ -704,9 +704,6 @@ with col_preview:
         # 3. Construcción del entorno HTML/CSS Superpuesto
         bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
-        # ATENCIÓN: El marco del teléfono usa posición relativa y el mensaje usa posición absoluta.
-        # Esto anula la interferencia de las columnas flexbox de Streamlit y garantiza la ubicación
-        # idéntica de la burbuja tanto en pantallas gigantes como en móviles pequeños.
         css_bloque = f"""
         <style>
         .iphone-preview {{
@@ -725,10 +722,9 @@ with col_preview:
         }}
         .telegram-message {{
             position: absolute;
-            bottom: 8.5%; /* Equivale matemáticamente al 17% del ancho del que hablábamos antes */
-            left: 3%;
-            width: fit-content;
-            max-width: 88%;
+            bottom: 11%;     /* Aumentado 2.5% desde el 8.5% original */
+            left: 3.5%;      /* Aumentado 0.5% desde el 3% original */
+            width: 63.5%;    /* 100% total - 3.5% izq - 33% derecha = 63.5% ancho exacto */
             background-color: #FFFFFF;
             border-radius: 4.5cqi 4.5cqi 4.5cqi 1cqi;
             padding: 1.1cqi;
