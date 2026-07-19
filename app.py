@@ -704,8 +704,9 @@ with col_preview:
         # 3. Construcción del entorno HTML/CSS Superpuesto
         bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
-        # ATENCIÓN: El marco del teléfono (border-radius y box-shadow de .iphone-preview) 
-        # ha vuelto a usar píxeles fijos (px) para que no se deforme. Todo lo demás sigue usando cqi.
+        # ATENCIÓN: El marco del teléfono usa posición relativa y el mensaje usa posición absoluta.
+        # Esto anula la interferencia de las columnas flexbox de Streamlit y garantiza la ubicación
+        # idéntica de la burbuja tanto en pantallas gigantes como en móviles pequeños.
         css_bloque = f"""
         <style>
         .iphone-preview {{
@@ -717,20 +718,20 @@ with col_preview:
             {bg_style}
             background-size: cover;
             background-position: center;
-            border-radius: 38px; /* Píxeles fijos para mantener la forma del teléfono */
-            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000; /* Borde negro fijo en píxeles */
+            border-radius: 38px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end; 
-            padding: 0 7% 17% 3%; 
             container-type: inline-size;
         }}
         .telegram-message {{
+            position: absolute;
+            bottom: 8.5%; /* Equivale matemáticamente al 17% del ancho del que hablábamos antes */
+            left: 3%;
+            width: fit-content;
+            max-width: 88%;
             background-color: #FFFFFF;
             border-radius: 4.5cqi 4.5cqi 4.5cqi 1cqi;
             padding: 1.1cqi;
-            max-width: 90%;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             color: #000;
@@ -763,7 +764,7 @@ with col_preview:
         </style>
         """
 
-        # Inyectamos todo el HTML seguido en una sola línea para que sea imposible que falle el renderizado
+        # Inyectamos todo el HTML seguido en una sola línea para evitar bugs de markdown
         html_bloque = f'<div class="iphone-preview"><div class="telegram-message">{html_images}<div class="telegram-text">{caption_html}</div></div></div>'
         
         st.markdown(css_bloque + html_bloque, unsafe_allow_html=True)
