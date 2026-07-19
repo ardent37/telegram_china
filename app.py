@@ -8,7 +8,6 @@ import html
 import io
 import json
 import base64
-import os
 from datetime import date, datetime
 
 import gspread
@@ -674,15 +673,7 @@ with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        # 1. Cargar el template tal y como aconseja Claude (abriendo el archivo directamente)
-        template_b64 = ""
-        try:
-            with open("Template.png", "rb") as f:
-                template_b64 = base64.b64encode(f.read()).decode()
-        except FileNotFoundError:
-            st.error("⚠️ ERROR: No se encuentra 'Template.png' en el servidor. Verifica que lo subiste a GitHub con ese nombre exacto.")
-
-        # 2. Renderizar las imágenes de la burbuja en HTML puro
+        # 1. Renderizar las imágenes de la burbuja (Base64)
         html_images = ""
         if usando_preset:
             html_images = '<div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;"><span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span></div>'
@@ -703,18 +694,16 @@ with col_preview:
             if len(imagenes_subidas) > 3:
                 html_images += f'<div style="font-size: 0.75rem; color: #7C8A94; text-align: center; margin-bottom: 6px;">+{len(imagenes_subidas)-3} more image(s)</div>'
 
-        # 3. Procesar el texto
+        # 2. Procesar el texto
         if nombre_articulo or precio or links_recopilados:
             caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados)
             caption_html = caption_preview.replace("\n", "<br>")
         else:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
 
-        # 4. Construcción del entorno HTML/CSS Superpuesto
-        bg_style = f"background-image: url('data:image/png;base64,{template_b64}');" if template_b64 else "background-color: #E4E9EC;"
+        # 3. Construcción del entorno HTML/CSS Superpuesto usando URL web directa
+        bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
-        # ATENCIÓN: El string de CSS se cierra de forma normal, y la parte de los '<div>' se empalma
-        # completamente compactada (sin saltos de línea ni espacios) para anular el bug de Markdown de Streamlit
         css_bloque = f"""
         <style>
         .iphone-preview {{
