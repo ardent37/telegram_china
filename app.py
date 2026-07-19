@@ -69,10 +69,15 @@ st.markdown(
         margin-bottom: 2rem;
     }
 
-    /* Botones PRIMARIOS -> Verde Brillante (Verify & Save as preset) */
-    [data-testid="stBaseButton-primary"] {
+    /* Botones PRIMARIOS -> Verde Brillante (Verify & Save as preset)
+       NOTA: un st.form_submit_button con type="primary" NO recibe el testid
+       "stBaseButton-primary", sino "stBaseButton-primaryFormSubmit" (lo
+       confirmé inspeccionando el bundle JS de Streamlit). Por eso "Verify"
+       no se pintaba verde: la regla de abajo antes no lo incluía. */
+    [data-testid="stBaseButton-primary"],
+    [data-testid="stBaseButton-primaryFormSubmit"] {
         background-color: #00E676 !important;
-        color: #0B1F2A !important;
+        color: #FFFFFF !important;
         border: none !important;
         border-radius: 10px;
         font-weight: 700;
@@ -81,19 +86,22 @@ st.markdown(
         box-shadow: 0 4px 10px rgba(0, 230, 118, 0.35) !important;
         transition: all 0.2s ease;
     }
-    [data-testid="stBaseButton-primary"]:hover {
+    [data-testid="stBaseButton-primary"]:hover,
+    [data-testid="stBaseButton-primaryFormSubmit"]:hover {
         background-color: #00C853 !important;
         box-shadow: 0 6px 14px rgba(0, 230, 118, 0.45) !important;
         transform: translateY(-1px);
     }
-    [data-testid="stBaseButton-primary"]:active {
+    [data-testid="stBaseButton-primary"]:active,
+    [data-testid="stBaseButton-primaryFormSubmit"]:active {
         transform: translateY(0);
     }
 
     /* Botones SECUNDARIOS -> Azul (Send to Telegram) */
-    [data-testid="stBaseButton-secondary"] {
+    [data-testid="stBaseButton-secondary"],
+    [data-testid="stBaseButton-secondaryFormSubmit"] {
         background-color: #7EC8E3 !important;
-        color: #0B1F2A !important;
+        color: #FFFFFF !important;
         border: none !important;
         border-radius: 10px;
         font-weight: 700;
@@ -102,7 +110,8 @@ st.markdown(
         box-shadow: 0 2px 8px rgba(126, 200, 227, 0.35) !important;
         transition: all 0.2s ease;
     }
-    [data-testid="stBaseButton-secondary"]:hover {
+    [data-testid="stBaseButton-secondary"]:hover,
+    [data-testid="stBaseButton-secondaryFormSubmit"]:hover {
         background-color: #5FB8DA !important;
         box-shadow: 0 4px 14px rgba(95, 184, 218, 0.45) !important;
         transform: translateY(-1px);
@@ -118,23 +127,51 @@ st.markdown(
         box-shadow: 0 0 0 3px rgba(126, 200, 227, 0.22) !important;
     }
 
-    /* Zona de subida de imágenes - Limpieza visual */
-    [data-testid="stFileUploadDropzone"] {
+    /* Oculta el aviso "Press Enter to submit form / apply" que Streamlit
+       muestra bajo cualquier input con cambios sin confirmar */
+    [data-testid="InputInstructions"] {
+        display: none !important;
+    }
+
+    /* Símbolo "$" fijado dentro del campo Precio: mismo tamaño de letra que
+       el texto del input y perfectamente centrado en vertical */
+    div[data-testid="stTextInputRootElement"]:has(input[aria-label="Price"]) {
+        position: relative;
+    }
+    div[data-testid="stTextInputRootElement"]:has(input[aria-label="Price"]) input {
+        padding-right: 1.9rem !important;
+    }
+    div[data-testid="stTextInputRootElement"]:has(input[aria-label="Price"])::after {
+        content: "$";
+        position: absolute;
+        right: 0.85rem;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 1rem;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #5A6B75;
+        font-weight: 600;
+        pointer-events: none;
+    }
+
+    /* Zona de subida de imágenes.
+       OJO: el testid real es "stFileUploaderDropzone" (con "er"), no
+       "stFileUploadDropzone". Con el nombre equivocado ninguna de estas
+       reglas llegaba a aplicarse antes. Mantenemos visible el texto de
+       ayuda (ahora mostrará correctamente "Limit 10MB per file"). */
+    [data-testid="stFileUploaderDropzone"] {
         background-color: #FAFBFC;
         border: 2px dashed #CBD5DA;
         border-radius: 14px;
+        padding: 1.75rem 1rem !important;
         transition: border-color 0.2s ease, background-color 0.2s ease;
-        padding: 2.5rem 1rem !important; 
     }
-    [data-testid="stFileUploadDropzone"]:hover {
+    [data-testid="stFileUploaderDropzone"]:hover {
         border-color: #7EC8E3;
         background-color: #F3FAFD;
     }
-    [data-testid="stFileUploadDropzone"] div[data-testid="stMarkdownContainer"] p {
-        display: none !important;
-    }
-    [data-testid="stFileUploadDropzone"] small {
-        display: none !important;
+    [data-testid="stFileUploaderDropzone"] [data-testid="stIconMaterial"] {
+        color: #7EC8E3 !important;
     }
 
     /* Alertas */
@@ -298,14 +335,14 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
 # TELEGRAM LOGIC
 # ------------------------------------------------------------------
 def construir_caption(nombre, precio, links_data):
-    texto = f"<b>{html.escape(nombre)}</b>\n\n"
-    
     # Añadimos el $ al enviarlo por si se le olvida al usuario
     precio_str = str(precio).strip()
     if precio_str and not precio_str.endswith('$'):
         precio_str += '$'
-        
-    texto += f"<b>Price:</b> {html.escape(precio_str)}\n\n"
+
+    texto = "USFANS BEST FINDS💯\n\n"
+    texto += f"🔎 Product: {html.escape(nombre)}\n"
+    texto += f"💲 Price: {html.escape(precio_str)}\n\n"
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
     return texto
@@ -378,7 +415,7 @@ def validar_campos_post(nombre, precio, links, imagenes):
 st.markdown(
     """
     <div class="app-title">Telegram Post Publisher</div>
-    <div class="app-subtitle">Created by Salty. Contact me at saltyreps@gmail.com or +34637646098</div>
+    <div class="app-subtitle">Created by Salty. Contact me at saltyreps@gmail.com</div>
     """,
     unsafe_allow_html=True,
 )
@@ -504,29 +541,39 @@ def apply_preset():
 
 st.selectbox("Saved Presets", nombres_presets, key="preset_selector", on_change=apply_preset)
 
-if st.session_state.preset_selector != "Create New / Manual":
-    st.info(f"✏️ Editing preset: **{st.session_state.preset_selector}**")
-
 if st.session_state.ui_folder_id:
     st.success("✅ Images loaded automatically from your cloud storage.")
     imagenes_subidas = []
     usando_preset = True
 else:
-    imagenes_subidas = st.file_uploader(
-        "Product Images",
-        type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True,
-    )
+    try:
+        # max_upload_size es un parámetro reciente de Streamlit (por-widget).
+        # Si la versión desplegada en Streamlit Cloud fuera más antigua y no
+        # lo soportara, caemos al uploader normal sin romper la app.
+        imagenes_subidas = st.file_uploader(
+            "Product Images",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            max_upload_size=10,  # MB por archivo
+        )
+    except TypeError:
+        imagenes_subidas = st.file_uploader(
+            "Product Images",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+        )
     usando_preset = False
 
-nombre_articulo = st.text_input("Article Name", key="ui_nombre")
+    # Salvaguarda extra por si la versión de Streamlit desplegada no soporta
+    # max_upload_size (versiones antiguas): igualmente bloqueamos aquí.
+    if imagenes_subidas:
+        archivos_grandes = [f.name for f in imagenes_subidas if f.size > 10 * 1024 * 1024]
+        if archivos_grandes:
+            st.error("These files exceed the 10MB limit: " + ", ".join(archivos_grandes))
+            st.stop()
 
-# Aquí reducimos el recuadro del precio y sacamos el $ explícitamente a un lado
-col_price_input, col_price_sym, _ = st.columns([2, 0.5, 5], vertical_alignment="bottom")
-with col_price_input:
-    precio = st.text_input("Price", placeholder="19.99", key="ui_precio")
-with col_price_sym:
-    st.markdown("<div style='font-size: 1.4rem; font-weight: 600; color: #16232D; margin-bottom: 0.4rem;'>$</div>", unsafe_allow_html=True)
+nombre_articulo = st.text_input("Article Name", key="ui_nombre")
+precio = st.text_input("Price", placeholder="19.99", key="ui_precio")
 
 
 st.markdown("##### Links")
