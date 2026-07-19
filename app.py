@@ -704,8 +704,8 @@ with col_preview:
         # 3. Construcción del entorno HTML/CSS Superpuesto
         bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
-        # ATENCIÓN: Todos los valores fijos (px, rem) se han cambiado por `cqi` (Container Query Inline)
-        # para que se escalen matemáticamente en función del ancho de la imagen principal.
+        # ATENCIÓN: El marco del teléfono (border-radius y box-shadow de .iphone-preview) 
+        # ha vuelto a usar píxeles fijos (px) para que no se deforme. Todo lo demás sigue usando cqi.
         css_bloque = f"""
         <style>
         .iphone-preview {{
@@ -717,8 +717,8 @@ with col_preview:
             {bg_style}
             background-size: cover;
             background-position: center;
-            border-radius: 10.5cqi;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 1.6cqi #000;
+            border-radius: 38px; /* Píxeles fijos para mantener la forma del teléfono */
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000; /* Borde negro fijo en píxeles */
             overflow: hidden;
             display: flex;
             flex-direction: column;
