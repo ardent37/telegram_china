@@ -7,6 +7,8 @@
 import html
 import io
 import json
+import base64
+import os
 from datetime import date, datetime
 
 import gspread
@@ -201,26 +203,6 @@ st.markdown(
         color: #7C8A94;
         font-weight: 600;
         margin-bottom: 0.75rem;
-    }
-
-    /* "Burbuja" que imita el mensaje final que llegará al canal */
-    .tg-bubble {
-        background-color: #F7F9FA;
-        border: 1px solid #E3E8EB;
-        border-radius: 14px;
-        padding: 1rem 1.15rem;
-        font-size: 0.92rem;
-        line-height: 1.6;
-        color: #16232D;
-        white-space: normal;
-    }
-    .tg-bubble a {
-        color: #2C7DA0;
-        text-decoration: none;
-        font-weight: 600;
-    }
-    .tg-bubble a:hover {
-        text-decoration: underline;
     }
     </style>
     """,
@@ -757,25 +739,119 @@ with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        if usando_preset:
-            st.caption("🖼️ Images will be loaded from your saved preset when you publish.")
-        elif imagenes_subidas:
-            miniaturas = imagenes_subidas[:3]
-            cols_thumb = st.columns(len(miniaturas))
-            for col_thumb, img in zip(cols_thumb, miniaturas):
-                with col_thumb:
-                    st.image(img, width="stretch")
-            if len(imagenes_subidas) > 3:
-                st.caption(f"+{len(imagenes_subidas) - 3} more image(s)")
-        else:
-            st.caption("No images added yet.")
+        # 1. Cargar el template original simulando el iPhone
+        template_b64 = ""
+        if os.path.exists("Template.png"):
+            with open("Template.png", "rb") as f:
+                template_b64 = base64.b64encode(f.read()).decode()
 
+        # 2. Renderizar el HTML de las imágenes que irán dentro de la burbuja
+        html_images = ""
+        if usando_preset:
+            html_images = '''
+            <div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+                <span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span>
+            </div>
+            '''
+        elif imagenes_subidas:
+            imgs_b64 = []
+            for img in imagenes_subidas[:3]:
+                # Guardamos posición para leer de forma segura y luego lo devolvemos a 0
+                pos = img.tell()
+                img.seek(0)
+                imgs_b64.append(base64.b64encode(img.read()).decode())
+                img.seek(pos)
+            
+            if len(imgs_b64) == 1:
+                grid_class = "grid-1"
+            elif len(imgs_b64) == 2:
+                grid_class = "grid-2"
+            else:
+                grid_class = "grid-3"
+            
+            html_images = f'<div class="telegram-images {grid_class}">'
+            for b64 in imgs_b64:
+                html_images += f'<img src="data:image/jpeg;base64,{b64}" />'
+            html_images += '</div>'
+            
+            if len(imagenes_subidas) > 3:
+                html_images += f'<div style="font-size: 0.75rem; color: #7C8A94; text-align: center; margin-bottom: 6px;">+{len(imagenes_subidas)-3} more image(s)</div>'
+
+        # 3. Procesar el texto de previsualización
         if nombre_articulo or precio or links_recopilados:
             caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados)
             caption_html = caption_preview.replace("\n", "<br>")
-            st.markdown(f'<div class="tg-bubble">{caption_html}</div>', unsafe_allow_html=True)
         else:
-            st.markdown(
-                '<div class="tg-bubble" style="color:#9AA7AE;">Fill in the form to see a preview…</div>',
-                unsafe_allow_html=True,
-            )
+            caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
+
+        # 4. Construcción del entorno HTML/CSS Superpuesto
+        bg_style = f"background-image: url('data:image/png;base64,{template_b64}');" if template_b64 else "background-color: #E4E9EC;"
+        
+        preview_html = f"""
+        <style>
+        .iphone-preview {{
+            position: relative;
+            width: 100%;
+            max-width: 360px; /* Tamaño máximo simulando el ancho de un móvil moderno */
+            aspect-ratio: 1275 / 2617; /* Respeta estrictamente tu Template.png */
+            margin: 0 auto;
+            {bg_style}
+            background-size: cover;
+            background-position: center;
+            border-radius: 38px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end; /* Fija la burbuja en la parte de abajo como en los chats */
+            padding: 0 7% 14% 7%; /* Espacio para que el mensaje no pise la barra de texto de Telegram del Template */
+        }}
+        .telegram-message {{
+            background-color: #FFFFFF;
+            border-radius: 16px 16px 16px 4px; /* Simula la esquina de bocadillo de chat */
+            padding: 4px;
+            max-width: 90%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #000;
+        }}
+        .telegram-images {{
+            display: grid;
+            gap: 2px;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }}
+        /* Lógica del layout del collage simulando el de Telegram */
+        .grid-1 {{ grid-template-columns: 1fr; }}
+        .grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
+        .grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
+        .grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
+        
+        .telegram-images img {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }}
+        .telegram-text {{
+            padding: 4px 8px 8px 8px;
+            font-size: 0.88rem;
+            line-height: 1.45;
+        }}
+        .telegram-text a {{
+            color: #2481cc;
+            text-decoration: none;
+        }}
+        </style>
+
+        <div class="iphone-preview">
+            <div class="telegram-message">
+                {html_images}
+                <div class="telegram-text">
+                    {caption_html}
+                </div>
+            </div>
+        </div>
+        """
+        
+        st.markdown(preview_html, unsafe_allow_html=True)
