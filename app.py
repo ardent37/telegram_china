@@ -232,9 +232,9 @@ def obtener_mapa_columnas(hoja):
 def obtener_presets(hoja_presets, clave):
     registros = hoja_presets.get_all_records()
     presets = []
-    for i, fila in enumerate(registros):
-        if str(fila.get("Clave_Usuario", "")).strip() == clave:
-            presets.append({"fila": i + 2, "datos": fila})
+    for i, enumerate_fila in enumerate(registros):
+        if str(enumerate_fila.get("Clave_Usuario", "")).strip() == clave:
+            presets.append({"fila": i + 2, "datos": enumerate_fila})
     return presets
 
 def guardar_preset_en_sheets(hoja_presets, clave, nombre, precio, links_json, id_carpeta, fila_existente=None):
@@ -467,9 +467,9 @@ if not modo_autenticado:
 
                 registros = hoja_auth.get_all_records()
                 fila_auth, usuario_auth = None, None
-                for i, f in enumerate(registros):
-                    if str(f.get("Clave", "")).strip() == clave_intentada:
-                        fila_auth, usuario_auth = i + 2, f
+                for i, enumerate_fila in enumerate(registros):
+                    if str(enumerate_fila.get("Clave", "")).strip() == clave_intentada:
+                        fila_auth, usuario_auth = i + 2, enumerate_fila
                         break
 
                 if usuario_auth is None:
@@ -701,7 +701,7 @@ with col_preview:
         else:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
 
-        # 3. Construcción del entorno HTML/CSS Superpuesto usando URL web directa
+        # 3. Construcción del entorno HTML/CSS Superpuesto
         bg_style = "background-image: url('https://i.postimg.cc/59kbt8P9/Telegram-Chat-Builder-(Comunidad)-(1).png');"
         
         css_bloque = f"""
@@ -721,7 +721,8 @@ with col_preview:
             display: flex;
             flex-direction: column;
             justify-content: flex-end; 
-            padding: 0 7% 14% 7%; 
+            /* Se ha ajustado el padding con porcentajes para que la posición sea relativa y escalable */
+            padding: 0 7% 16% 5.5%; 
         }}
         .telegram-message {{
             background-color: #FFFFFF;
