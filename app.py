@@ -473,9 +473,6 @@ if "ui_nombre" not in st.session_state:
 
 # ------------------------------------------------------------------
 # PANTALLA 1: ACCESO (independiente de Post Customization).
-# Solo se dibuja mientras el usuario no esté autenticado; en cuanto la
-# clave es válida, hacemos st.rerun() y esta pantalla deja de existir
-# por completo, sin dejar el cuadro de texto visible en ningún sitio.
 # ------------------------------------------------------------------
 if not modo_autenticado:
     st.markdown(
@@ -529,9 +526,6 @@ if not modo_autenticado:
                     st.session_state.ui_folder_id = None
                     st.session_state.num_visible_links = 2
 
-                    # Reinicio limpio: la próxima ejecución del script ya
-                    # entra directamente en la pantalla de trabajo, sin
-                    # ningún resto de la pantalla de acceso.
                     st.rerun()
 
             except Exception as error:
@@ -588,10 +582,6 @@ def apply_preset():
         st.session_state.num_visible_links = max(2, len(links_list))
 
 
-# Creamos las dos columnas primero. El orden en que se rellenan más abajo
-# (formulario antes que preview, en el código) no importa: cada "with"
-# escribe en la columna visual que le corresponde, no en la que toque
-# según el orden del código.
 col_preview, col_form = st.columns([1, 1.5], gap="large")
 
 with col_form:
@@ -605,14 +595,11 @@ with col_form:
         usando_preset = True
     else:
         try:
-            # max_upload_size es un parámetro reciente de Streamlit (por-widget).
-            # Si la versión desplegada en Streamlit Cloud fuera más antigua y no
-            # lo soportara, caemos al uploader normal sin romper la app.
             imagenes_subidas = st.file_uploader(
                 "Product Images",
                 type=["png", "jpg", "jpeg"],
                 accept_multiple_files=True,
-                max_upload_size=10,  # MB por archivo
+                max_upload_size=10, 
             )
         except TypeError:
             imagenes_subidas = st.file_uploader(
@@ -622,8 +609,6 @@ with col_form:
             )
         usando_preset = False
 
-        # Salvaguarda extra por si la versión de Streamlit desplegada no soporta
-        # max_upload_size (versiones antiguas): igualmente bloqueamos aquí.
         if imagenes_subidas:
             archivos_grandes = [f.name for f in imagenes_subidas if f.size > 10 * 1024 * 1024]
             if archivos_grandes:
@@ -656,17 +641,12 @@ with col_form:
 
     col_send, col_save = st.columns([2, 1])
     with col_send:
-        # Este botón es secundario en el CSS (Azul)
         enviado = st.button("📨 Send to Telegram", use_container_width=True, type="secondary")
     with col_save:
-        # Este botón es primario en el CSS (Verde brillante)
         guardar_preset_btn = st.button("💾 Save as preset", use_container_width=True, type="primary")
 
     st.caption("Saving a preset does not publish anything and does not count against your daily limit.")
 
-    # --------------------------------------------------------------
-    # ACCIÓN: GUARDAR COMO PRESET (independiente del envío a Telegram)
-    # --------------------------------------------------------------
     if guardar_preset_btn:
         servicio_drive = obtener_servicio_drive()
         imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
@@ -686,9 +666,6 @@ with col_form:
 
         st.success(f"💾 Preset '{nombre_articulo}' saved. It did not count against your daily Telegram limit.")
 
-    # --------------------------------------------------------------
-    # ACCIÓN: ENVIAR A TELEGRAM
-    # --------------------------------------------------------------
     if enviado:
         servicio_drive = obtener_servicio_drive()
         imagenes_finales = obtener_imagenes_finales(servicio_drive, usando_preset, st.session_state.ui_folder_id, imagenes_subidas)
@@ -729,46 +706,38 @@ with col_form:
         st.success(f"✅ Successfully published! You have {restantes} post(s) left today.")
 
 # ------------------------------------------------------------------
-# PREVIEW PANEL (columna izquierda, fija en pantalla).
-# Se escribe DESPUÉS de col_form en el código para poder usar las
-# variables ya calculadas (nombre_articulo, precio, links_recopilados...),
-# pero al usar "with col_preview:" Streamlit lo sigue colocando en la
-# columna visual de la izquierda, no donde aparece en el código.
+# PREVIEW PANEL
 # ------------------------------------------------------------------
 with col_preview:
     with st.container(key="preview_panel"):
         st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
 
-        # 1. Cargar el template original simulando el iPhone
+        # 1. Cargar el template original buscando en la ruta absoluta del servidor
         template_b64 = ""
-        if os.path.exists("Template.png"):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        template_path = os.path.join(base_dir, "Template.png")
+        
+        if os.path.exists(template_path):
+            with open(template_path, "rb") as f:
+                template_b64 = base64.b64encode(f.read()).decode()
+        elif os.path.exists("Template.png"):
+            # Salvavidas por si se ejecuta desde otra carpeta raíz
             with open("Template.png", "rb") as f:
                 template_b64 = base64.b64encode(f.read()).decode()
 
-        # 2. Renderizar el HTML de las imágenes que irán dentro de la burbuja
+        # 2. Renderizar el HTML de las imágenes (todo en una sola línea para evitar parseos raros de Streamlit)
         html_images = ""
         if usando_preset:
-            html_images = '''
-            <div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;">
-                <span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span>
-            </div>
-            '''
+            html_images = '<div style="background-color: #E4E9EC; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px;"><span style="color: #8C9CA6; font-weight: 500; font-size: 0.85rem;">🖼️ Preset Images</span></div>'
         elif imagenes_subidas:
             imgs_b64 = []
             for img in imagenes_subidas[:3]:
-                # Guardamos posición para leer de forma segura y luego lo devolvemos a 0
                 pos = img.tell()
                 img.seek(0)
                 imgs_b64.append(base64.b64encode(img.read()).decode())
                 img.seek(pos)
             
-            if len(imgs_b64) == 1:
-                grid_class = "grid-1"
-            elif len(imgs_b64) == 2:
-                grid_class = "grid-2"
-            else:
-                grid_class = "grid-3"
-            
+            grid_class = "grid-1" if len(imgs_b64) == 1 else "grid-2" if len(imgs_b64) == 2 else "grid-3"
             html_images = f'<div class="telegram-images {grid_class}">'
             for b64 in imgs_b64:
                 html_images += f'<img src="data:image/jpeg;base64,{b64}" />'
@@ -785,73 +754,69 @@ with col_preview:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
 
         # 4. Construcción del entorno HTML/CSS Superpuesto
+        # ¡ATENCIÓN! No hay espacios a la izquierda de las etiquetas HTML para que Streamlit no lo convierta en código
         bg_style = f"background-image: url('data:image/png;base64,{template_b64}');" if template_b64 else "background-color: #E4E9EC;"
         
-        preview_html = f"""
-        <style>
-        .iphone-preview {{
-            position: relative;
-            width: 100%;
-            max-width: 360px; /* Tamaño máximo simulando el ancho de un móvil moderno */
-            aspect-ratio: 1275 / 2617; /* Respeta estrictamente tu Template.png */
-            margin: 0 auto;
-            {bg_style}
-            background-size: cover;
-            background-position: center;
-            border-radius: 38px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end; /* Fija la burbuja en la parte de abajo como en los chats */
-            padding: 0 7% 14% 7%; /* Espacio para que el mensaje no pise la barra de texto de Telegram del Template */
-        }}
-        .telegram-message {{
-            background-color: #FFFFFF;
-            border-radius: 16px 16px 16px 4px; /* Simula la esquina de bocadillo de chat */
-            padding: 4px;
-            max-width: 90%;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            color: #000;
-        }}
-        .telegram-images {{
-            display: grid;
-            gap: 2px;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 6px;
-        }}
-        /* Lógica del layout del collage simulando el de Telegram */
-        .grid-1 {{ grid-template-columns: 1fr; }}
-        .grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
-        .grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
-        .grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
-        
-        .telegram-images img {{
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }}
-        .telegram-text {{
-            padding: 4px 8px 8px 8px;
-            font-size: 0.88rem;
-            line-height: 1.45;
-        }}
-        .telegram-text a {{
-            color: #2481cc;
-            text-decoration: none;
-        }}
-        </style>
-
-        <div class="iphone-preview">
-            <div class="telegram-message">
-                {html_images}
-                <div class="telegram-text">
-                    {caption_html}
-                </div>
-            </div>
+        preview_html = f"""<style>
+.iphone-preview {{
+    position: relative;
+    width: 100%;
+    max-width: 360px; 
+    aspect-ratio: 1712 / 3504;
+    margin: 0 auto;
+    {bg_style}
+    background-size: cover;
+    background-position: center;
+    border-radius: 38px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.12), inset 0 0 0 6px #000;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end; 
+    padding: 0 7% 14% 7%; 
+}}
+.telegram-message {{
+    background-color: #FFFFFF;
+    border-radius: 16px 16px 16px 4px;
+    padding: 4px;
+    max-width: 90%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    color: #000;
+}}
+.telegram-images {{
+    display: grid;
+    gap: 2px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}}
+.grid-1 {{ grid-template-columns: 1fr; }}
+.grid-2 {{ grid-template-columns: 1fr 1fr; grid-auto-rows: 150px; }}
+.grid-3 {{ grid-template-columns: 1fr 1fr; grid-template-rows: 80px 80px; }}
+.grid-3 img:first-child {{ grid-row: span 2; height: 100%; }}
+.telegram-images img {{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}}
+.telegram-text {{
+    padding: 4px 8px 8px 8px;
+    font-size: 0.88rem;
+    line-height: 1.45;
+}}
+.telegram-text a {{
+    color: #2481cc;
+    text-decoration: none;
+}}
+</style>
+<div class="iphone-preview">
+    <div class="telegram-message">
+        {html_images}
+        <div class="telegram-text">
+            {caption_html}
         </div>
-        """
+    </div>
+</div>"""
         
         st.markdown(preview_html, unsafe_allow_html=True)
