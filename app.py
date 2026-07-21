@@ -723,8 +723,6 @@ with col_form:
 # ------------------------------------------------------------------
 with col_preview:
     with st.container(key="preview_panel"):
-        st.markdown('<div class="tg-panel-label">📱 Telegram Preview</div>', unsafe_allow_html=True)
-
         # 1. Renderizar las imágenes de la burbuja (Base64) usando medidas relativas CQI
         html_images = ""
         if usando_preset:
@@ -819,4 +817,3 @@ with col_preview:
         html_bloque = f'<div class="iphone-preview"><div class="telegram-message">{html_images}<div class="telegram-text">{caption_html}</div></div></div>'
         
         st.markdown(css_bloque + html_bloque, unsafe_allow_html=True)
-        st.caption("🔄 The referral link rotates automatically between two variants each time you publish.")
