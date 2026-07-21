@@ -196,8 +196,21 @@ st.markdown(
 
 NOMBRE_PESTANA_USUARIOS = "Usuarios"
 NOMBRE_PESTANA_PRESETS = "Productos_Guardados"
+NOMBRE_PESTANA_CONFIG = "Config"
 PLATAFORMAS = ["Select an option...", "USFans", "Hipobuy", "ACBuy", "Litbuy", "Mulebuy", "Hoobuy", "Vigorbuy"]
 MAX_LINKS = 5
+
+# Enlace de la hoja "+8000 PRODUCTS SPREADSHEET" (fijo, no alterna)
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1o0V5b95nCI7OmQNMST1wZk6GIxOZuXw2H8OYRsnqawA/edit?gid=454898861#gid=454898861"
+
+# Enlaces de referido: se alternan secuencialmente en cada mensaje publicado.
+# El orden se guarda en la pestaña "Config" del Google Sheet (no en memoria),
+# para que la alternancia se mantenga aunque la app se reinicie o la use
+# otra persona en otra sesión.
+REFERRAL_LINKS = [
+    "https://usfans.com/register?ref=QDGYEP",
+    "https://usfans.com/register?ref=GRAS35",
+]
 
 
 # ------------------------------------------------------------------
@@ -219,11 +232,24 @@ def obtener_servicio_drive():
     )
     return build("drive", "v3", credentials=credenciales)
 
+def obtener_hoja_config(libro):
+    """Pestaña donde se guarda el contador que alterna los dos enlaces de
+    referido (celda B1). Se crea sola la primera vez que hace falta, para
+    que no haya que preparar nada a mano en el Google Sheet."""
+    try:
+        return libro.worksheet(NOMBRE_PESTANA_CONFIG)
+    except gspread.exceptions.WorksheetNotFound:
+        hoja = libro.add_worksheet(title=NOMBRE_PESTANA_CONFIG, rows=5, cols=2)
+        hoja.update("A1:B1", [["Referral_Counter", "0"]])
+        return hoja
+
+
 def obtener_hojas():
     cliente_sheets = obtener_servicio_sheets()
     id_hoja = st.secrets["gsheets"]["sheet_id"]
     libro = cliente_sheets.open_by_key(id_hoja)
-    return libro.worksheet(NOMBRE_PESTANA_USUARIOS), libro.worksheet(NOMBRE_PESTANA_PRESETS)
+    hoja_config = obtener_hoja_config(libro)
+    return libro.worksheet(NOMBRE_PESTANA_USUARIOS), libro.worksheet(NOMBRE_PESTANA_PRESETS), hoja_config
 
 def obtener_mapa_columnas(hoja):
     encabezados = hoja.row_values(1)
@@ -339,9 +365,28 @@ def guardar_preset_completo(servicio_drive, hoja_presets, presets_usuario, usuar
     )
 
 # ------------------------------------------------------------------
+# ENLACE DE REFERIDO ALTERNANTE
+# ------------------------------------------------------------------
+def obtener_siguiente_referral_link(hoja_config):
+    """Devuelve (enlace, indice) según el contador guardado en Sheets, SIN
+    avanzarlo todavía. Se combina con avanzar_referral_counter() una vez
+    confirmado que el envío a Telegram tuvo éxito, igual que se hace con
+    el contador de usos diarios."""
+    valor = hoja_config.acell("B1").value
+    indice = int(valor) if valor and valor.strip().isdigit() else 0
+    indice = indice % len(REFERRAL_LINKS)
+    return REFERRAL_LINKS[indice], indice
+
+
+def avanzar_referral_counter(hoja_config, indice_usado):
+    siguiente = (indice_usado + 1) % len(REFERRAL_LINKS)
+    hoja_config.update_acell("B1", str(siguiente))
+
+
+# ------------------------------------------------------------------
 # TELEGRAM LOGIC
 # ------------------------------------------------------------------
-def construir_caption(nombre, precio, links_data):
+def construir_caption(nombre, precio, links_data, referral_link):
     precio_str = str(precio).strip()
     if precio_str and not precio_str.endswith('$'):
         precio_str += '$'
@@ -351,6 +396,10 @@ def construir_caption(nombre, precio, links_data):
     texto += f"💲 Price: {html.escape(precio_str)}\n\n"
     for plataforma, url in links_data:
         texto += f"🔗 <a href='{html.escape(url, quote=True)}'>{html.escape(plataforma)}</a>\n"
+
+    texto += "\n"
+    texto += f"🎁 <a href='{html.escape(referral_link, quote=True)}'>Sign Up for -40% Off Shipping</a> 🎁\n\n"
+    texto += f"📦<a href='{html.escape(SPREADSHEET_URL, quote=True)}'>+8000 PRODUCTS SPREADSHEET</a>"
     return texto
 
 def enviar_a_telegram(bot_token, chat_id, caption, imagenes):
@@ -462,7 +511,7 @@ if not modo_autenticado:
 
         with st.spinner("Verifying access key & fetching database..."):
             try:
-                hoja_auth, hoja_presets = obtener_hojas()
+                hoja_auth, hoja_presets, _ = obtener_hojas()
                 col_map_auth = obtener_mapa_columnas(hoja_auth)
 
                 registros = hoja_auth.get_all_records()
@@ -618,7 +667,7 @@ with col_form:
             st.stop()
 
         with st.spinner("Saving preset to cloud..."):
-            hoja_auth_p, hoja_presets_p = obtener_hojas()
+            hoja_auth_p, hoja_presets_p, _ = obtener_hojas()
             guardar_preset_completo(
                 servicio_drive, hoja_presets_p, presets_usuario, usuario, clave,
                 nombre_articulo, precio, links_recopilados, imagenes_finales,
@@ -641,7 +690,10 @@ with col_form:
             st.error(f"Daily limit reached ({limite_diario} posts). Please try again tomorrow.")
             st.stop()
 
-        caption = construir_caption(nombre_articulo, precio, links_recopilados)
+        hoja_auth, _, hoja_config = obtener_hojas()
+        referral_link, indice_referral_usado = obtener_siguiente_referral_link(hoja_config)
+
+        caption = construir_caption(nombre_articulo, precio, links_recopilados, referral_link)
 
         with st.spinner("Publishing to Telegram..."):
             bot_token = st.secrets["telegram"]["bot_token"]
@@ -653,12 +705,12 @@ with col_form:
             st.stop()
 
         try:
-            hoja_auth, _ = obtener_hojas()
             actualizaciones = [
                 {"range": gspread.utils.rowcol_to_a1(fila, col_map["Usos_Hoy"]), "values": [[usos_efectivos + 1]]},
                 {"range": gspread.utils.rowcol_to_a1(fila, col_map["Ultima_Fecha"]), "values": [[hoy.strftime("%Y-%m-%d")]]},
             ]
             hoja_auth.batch_update(actualizaciones)
+            avanzar_referral_counter(hoja_config, indice_referral_usado)
         except Exception as error:
             st.warning(f"Published to Telegram, but could not update the limit counter in Sheets: {error}")
             st.stop()
@@ -695,8 +747,11 @@ with col_preview:
                 html_images += f'<div style="font-size: 3.3cqi; color: #7C8A94; text-align: center; margin-bottom: 1.6cqi;">+{len(imagenes_subidas)-3} more image(s)</div>'
 
         # 2. Procesar el texto
+        # Para el preview usamos siempre el primer enlace de referido: no
+        # llamamos a Sheets en cada tecleo (el contador real solo se lee
+        # y avanza al pulsar "Send to Telegram").
         if nombre_articulo or precio or links_recopilados:
-            caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados)
+            caption_preview = construir_caption(nombre_articulo or "—", precio or "—", links_recopilados, REFERRAL_LINKS[0])
             caption_html = caption_preview.replace("\n", "<br>")
         else:
             caption_html = '<span style="color:#9AA7AE;">Fill in the form to see a preview…</span>'
@@ -764,3 +819,4 @@ with col_preview:
         html_bloque = f'<div class="iphone-preview"><div class="telegram-message">{html_images}<div class="telegram-text">{caption_html}</div></div></div>'
         
         st.markdown(css_bloque + html_bloque, unsafe_allow_html=True)
+        st.caption("🔄 The referral link rotates automatically between two variants each time you publish.")
